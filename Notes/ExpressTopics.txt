@@ -1,0 +1,176 @@
+A. EXPRESS INTERNALS & CORE MECHANICS
+-------------------------------------
+1. What Express really is 
+    - Express as a function over http.createServer 
+    - Express is not a server, Node is 
+2. Express architecture 
+    - app object 
+    - router object 
+    - middleware stack 
+3. app vs router internals 
+    - express() vs express.Router() 
+    - When to use router 
+    - Modular routing 
+4. Router mounting & path resolution 
+    - app.use('/api', router) 
+    - req.url vs req.baseUrl 
+    - How prefixes are applied 
+5. Route matching & execution order 
+    - HTTP method matching 
+    - Path matching 
+    - First-match-wins rule 
+    - How app.use can shadow routes
+6. Request–response lifecycle 
+    - Incoming request 
+    - Middleware execution 
+    - Route handler 
+    - Response sent 
+7. Middleware execution order 
+    - Global middleware 
+    - Route-level middleware 
+    - Order sensitivity
+8. Middleware stack structure (internal) 
+    - Layer concept 
+    - Path, method, handler 
+    - How Express iterates layers 
+9. next() behavior 
+    - next() 
+    - next(err) 
+    - What happens if next() is not called 
+10. Short
+    -circuiting the lifecycle 
+    - Ending response early 
+    - Auth / validation middleware patterns 
+11. Request object internals (req) 
+    - req built on IncomingMessage 
+    - req.body 
+    - req.params 
+    - req.query 
+    - req.headers 
+    - How middleware mutates req 
+12. Response object internals (res) 
+    - res built on ServerResponse 
+    - res.send() 
+    - res.json() 
+    - res.end() 
+    - Headers already sent error 
+13. What ends the request lifecycle 
+    - res.send vs res.end 
+    - Not calling next() 
+    - Hanging request bugs 
+14. Sync vs async middleware behavior 
+    - Sync throws 
+    - Async promise rejections 
+    - Why Express doesn’t catch async errors 
+15. Error-handling middleware internals 
+    - 4-argument signature 
+    - Placement rules 
+    - Error flow 
+16. Async error handling patterns 
+    - try/catch everywhere (problem) 
+    - async handler wrapper 
+    - Centralized async error handling 
+17. Express concurrency model 
+    - Single-threaded execution 
+    - Event loop implications 
+    - CPU-bound work blocking all requests 
+
+B. REST API DESIGN & BEST PRACTICES
+-----------------------------------
+18. REST principles (practical) 
+    - Resource-oriented design 
+    - Statelessness 
+    - Client-server separation 
+19. Resource naming & URL design 
+    - Nouns vs verbs 
+    - Pluralization 
+    - Nested resources 
+    - Avoid deep nesting 
+20. HTTP methods 
+    - GET 
+    - POST 
+    - PUT 
+    - PATCH 
+    - DELETE 
+21. Safe vs idempotent methods 
+    - Retry behavior 
+    - Why idempotency matters 
+22. Proper HTTP status codes 
+    - 200 vs 201 
+    - 204 
+    - 400 vs 422 
+    - 401 vs 403 
+    - 404 vs 409 
+    - 500 vs 503 
+23. Idempotency keys 
+    - Idempotency-Key header 
+    - Preventing duplicate POSTs 
+    - Payment & retry scenarios 
+24. API response structure 
+    - Consistent success responses 
+    - Consistent error responses 
+25. Error response standardization 
+    - Error codes vs messages 
+    - Field-level validation errors 
+    - Avoid leaking internals 
+26. Pagination strategies 
+    - Offset-based pagination 
+    - Cursor-based pagination 
+    - Performance trade-offs 
+27. Filtering strategies 
+    - Query params 
+    - Allowlist vs denylist 
+28. Sorting strategies 
+    - Sort fields 
+    - Direction control 
+    - Validation 
+29. Validation fundamentals 
+    - Why validation must be middleware 
+    - Fail-fast principle 
+30. Validation with Joi / Zod 
+    - Body validation 
+    - Query validation 
+    - Params validation 
+31. Centralized error handling 
+    - Custom error classes 
+    - Mapping errors to HTTP responses 
+32. Authentication vs Authorization 
+    - Difference between auth & authz 
+    - Token-based auth 
+    - Middleware layering 
+33. Caching strategies 
+    - Cache-Control 
+    - ETag 
+    - Conditional requests 
+34. Rate limiting 
+    - Why it’s needed 
+    - IP-based vs user-based 
+    - Express middleware approach 
+35. API versioning 
+    - URL versioning 
+    - Header versioning 
+    - Backward compatibility 
+36. Backward compatibility & deprecation 
+    - Non-breaking changes 
+    - Deprecation strategy 
+    - Sunset headers 
+37. Security best practices 
+    - Helmet 
+    - Input sanitization 
+    - Preventing mass assignment 
+    - CORS basics 
+38. Bulk operations & limits 
+    - Bulk create/update endpoints 
+    - Payload size limits 
+    - Abuse prevention 
+
+C. PRODUCTION-GRADE EXPRESS 
+--------------------------
+39. Graceful shutdown 
+    - SIGTERM / SIGINT 
+    - Closing server connections 
+    - Preventing dropped requests
+40. Logging & observability 
+    - Request logging 
+    - Correlation IDs 
+    - Debugging async flows 

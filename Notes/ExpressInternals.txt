@@ -1,0 +1,163 @@
+1. Express as a function over http.createServer
+    - Node provide the HTTP module
+    - It can create an HTTP server
+    - It listen to the port
+    - It receives request  and send response
+    - NODE JS IS THE ACTUAL SERVER
+    
+    - Express is a web framework
+    - It is build on top of Node's HTTP module
+    - provides routing and middleware
+    - But internally
+        - Express returns a function
+    - Express does
+        - Receives req  and  res
+        - Starts its middleware and routing logic
+    - Express is simply a function passed into Node's server
+    - Node calls Express(as a function)
+    - NODE IS THE SERVER, EXPRESS IS THE REQUEST  HANDLER
+--------------------------------------------------------------------------------
+2. Why does node need express
+    - node alone
+        if (req. meth od === "GET" && req. url  === "/users") {
+            ......
+        };
+    - Express
+        app.get("/users" , handler);
+    - So Express adds: 
+        - Routing abstraction
+        - Middleware chain
+        - Cleaner code
+        - Reusability
+--------------------------------------------------------------------------------
+3. Express is not a server, Node is
+    - What does a server actually means ?
+        - A server is something that can
+            1. Open a Network port(e.g,. 3000)
+            2. Accept a TCP connections
+            3. Read raw bytes from the network
+            4. Prase protocols (like HTTP)
+            5. Send bytes back to the client
+        - Node.js provides
+            1. TCP sockets (via net module)
+            2. HTTP parsing (via http module)
+            3. Event loop
+            4. OS level async I/O
+        - Express does only
+            1. Routing (app.get , app.post)
+            2. Middleware chaining
+            3. Request/ Response helpers
+--------------------------------------------------------------------------------
+4. Express architecture
+    1. app (const app = express())
+        - app is both a function(Node can call it) and an Object(methods and properties attached)
+        - app is instance of a function
+        - app.use is typeof function
+            eg : function createServer() {
+                    function app(req, res, next){
+                        app.handle(req, res, next)
+                    } //function
+                    app.use = function use(){} //app treated as object, bounded with methods
+                    app.get = function get(){}
+                }
+        - properties and methods are attached to the functions.
+        - In Javascript functions are objects.
+        - Internally app holds
+            - app._router -> main router
+            - app.settings -> configuration (evn, trust proxy)
+            - app.locals -> app-level shared variables
+    2. router Object
+        - express.Router() is mini Express app that can :
+            - register routes
+            - register middlewares in middleware stack
+            - be mounted on the main app
+        - It is introduced for
+            - Group related routes
+            - Isolate logic
+            - Build modular,scalable API's
+        - type of router is a function
+        - Router is a child of app
+        - Express treats Router() as a middleware, For matching paths, forward the requests to the router. Router then run its own stack
+        - route flow : 
+                GET /api/users
+                    ↓
+                app middleware
+                    ↓
+                router middleware
+                    ↓
+                router route handler
+    3. middleware stack
+        - An Ordered list (array) of middleware layers that Express executes sequentially for a request
+        - The middleware stack is core execution model of Express.
+        - Its job it to :
+            - inspect or modify req
+            - inspect or modify res
+            - Decide whether to pass control forward
+            e.g.
+                app.use(logger)
+                app.use(auth)
+                app.get("/users",handler);
+
+                - Express build something like this (middleware stack)
+                    [
+                        loggerMiddleware,
+                        authMiddleware,
+                        usersRouterMiddleware
+                    ]
+        - Execution model
+            1. Express start a index 0 of the stack
+            2. Executes the first middleware
+            3. That middleware must call next()
+            4. Express moves to next middleware
+            5. This will continue till: 
+                - A response is sent OR The stack ends
+
+                            Request
+                                ↓
+                            [ Middleware 1 ]
+                                ↓ next()
+                            [ Middleware 2 ]
+                                ↓ next()
+                            [ Route Handler ]
+                                ↓ res.send()
+                            Response
+
+
+--------------------------------------------------------------------------------
+5. app vs router internals
+    1. express() vs express.Router()
+        - app
+            - app is the root express application
+            - the entry point for all http requests 
+            - the only object that :
+                - can start a server
+                - can integrate with Node's http ;ayer
+        - router
+            - A modules, mountable request  handler
+            - designed only to:
+                - Group routes
+                - Group middlewares
+        eg : function createApp() {
+                function app(req, res, next) {
+                    app.handle(req, res, next)
+                }
+
+                app._router = new Router();
+                app.listen = function listen() {}
+
+                return app;
+            }
+
+            function Router(){
+                function router(req, res, next){
+                    router.handle(req, res, next)
+                }
+
+                router.stack = [];
+                return router;
+            }
+    2. use router for feature based API's and use app for small/temporary/POC api's
+    3. Modular routing : organizing routes
+        - Maintainability
+        - Team scalability
+        - Testability

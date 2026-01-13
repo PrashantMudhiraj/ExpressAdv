@@ -13,9 +13,23 @@ app.use("/api", apiRouter);
 // app.use("/users", usersRouter);
 // app.use("/orders", ordersRouter);
 
-app.use((req, res, next) => {
+app.get("/getTest/:id", (req, res, next) => {
     res.send("hello !");
 });
+
+app.use("/test", (req, res, next) => {
+    res.write("Hello "); // request still alive
+    res.write("World!");
+    res.end();
+});
+
+// console.log(app.router.handle);
+// app.use((req, res) => res.send("none route"));
+// console.log(app.router);
+// console.log(app.router.stack[0]); //logger
+// console.log(app.router.stack[1]); // "/api" router
+// console.log(app.router.stack[4]); // "/api" router
+
 app.listen(3000, () => {
     console.log("app listening on port 3000");
 });

@@ -37,8 +37,8 @@ A. EXPRESS INTERNALS & CORE MECHANICS
     - next() 
     - next(err) 
     - What happens if next() is not called 
-10. Short
-    -circuiting the lifecycle 
+10. Short-circuiting 
+    - the lifecycle 
     - Ending response early 
     - Auth / validation middleware patterns 
 11. Request object internals (req) 

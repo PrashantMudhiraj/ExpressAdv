@@ -1,4 +1,5 @@
 1. Express as a function over http.createServer
+
     - Node provide the HTTP module
     - It can create an HTTP server
     - It listen to the port
@@ -18,6 +19,7 @@
     - NODE IS THE SERVER, EXPRESS IS THE REQUEST HANDLER
 --------------------------------------------------------------------------------
 2. Why does node need express
+
     - node alone
         if (req. meth od === "GET" && req. url  === "/users") {
             ......
@@ -31,6 +33,7 @@
         - Reusability
 --------------------------------------------------------------------------------
 3. Express is not a server, Node is
+
     - What does a server actually means ?
         - A server is something that can
             1. Open a Network port(e.g,. 3000)
@@ -49,6 +52,7 @@
             3. Request/Response helpers
 --------------------------------------------------------------------------------
 4. Express architecture
+
     1. app (const app = express())
         - app is both a function(Node can call it) and an Object(methods and properties attached)
         - app is instance of a function
@@ -123,6 +127,7 @@
                             Response
 --------------------------------------------------------------------------------
 5. app vs router internals
+
     1. express() vs express.Router()
         - app
             - app is the root express application
@@ -162,6 +167,7 @@
         - Testability
 --------------------------------------------------------------------------------
 6. Router mounting basics
+
     1. app.use("/api" , router)
         - Router mounting : It means attaching a router as a middleware at a specific path prefix.
         - Here, For any request starting with /api, pass control to the router. 
@@ -208,3 +214,285 @@
 
         - req.originalUrl === req.baseUrl + req.url
         - req.originalUrl is the untouched original path, while req.baseUrl + req.url explain how Express got there.
+--------------------------------------------------------------------------------
+7. Route matching & execution order
+
+    1. HTTP method matching
+        - Express executes a router handler only if the HTTP method matches with route's declared method
+            e.g : app.get("/users" , routeHandler)
+                  app.post("/users" , routerHandler)
+        - HTTP method comes from Node.js (req.method), Node parses it from HTTP request.
+        - app.use() does not care about HTTP methods, It matches all methods, Generally used for method-agnostic middleware
+            e.g : Auth middleware often uses use()
+    2. Path matching
+        - The Path matching is a process by which Express compare the request URL with a registered route path to decide whether a handler should run.
+        - Query String are excluded in Path Matching
+
+        e.g :   app.get("/users" , routeHandler)
+                    - Matches 
+                        GET /users
+                    - Does not match
+                        GET /users/
+                        GET /users/42
+
+                app.get("/users/:id" , routeHandler)
+                    - Matches 
+                        GET /users/42
+                        GET /users/abc
+                    - req.param ={ id : 42 }
+                    - Does not match
+                        GET /users
+                        GET /users/42/profile    
+                
+                app.get("/users/:userId/orders/:orderId, handler)
+                    - Matches
+                        GET /users/10/orders/1
+                        - req.params = { userId : 10, orderId : 1 }
+
+                - WildCard match (*)
+                    app.get("/files/*", handler) 
+                        - Matches
+                            GET /files/a.txt
+                            GET /files/images/logo.png
+                        - Matches anything after that point
+
+                - Optional parameter
+                    app.get("/users/:id?",handler)
+                        - Matches
+                            GET /users
+                            GET /users/42
+    3. First-match wins
+        - Express executes the first route or middleware whose method + path match the request
+        e.g :   app.use("/users", usersRouter);
+                app.get("/users/:id" , handler)
+
+                - GET /users/1
+                - /users middleware runs first
+                -  Router handles the request
+                - /users/:id never reached
+                This is called route shadowing
+            NOTE : middleware can call next() and allow continuation
+    4. How app.use() can shadow routes
+        - Route shadowing happens when a middleware or router defined earlier matches a request and it doesn't go to next handler
+        - app.use(path, middleware)
+            - Matches all HTTP methods
+            - Matches prefixes, not exact path
+
+            e.g : app.use("/users",middleware)
+                    -Matched
+                    - GET /users
+                    - POST /users
+                    - GET /users/42
+                    - DELETE /users/42
+
+                - classic shadowing
+                    app.use("/users" , usersRouter);
+                    app.get("/users/me" , (req , res) => {
+                        res.send("Current user");
+                    })
+
+                    - /users/me never reaches as use() matches the prefix
+                    - Route is shadowed
+                - CORRECT USAGE 
+                    - user.route.js
+                        router.get("/me" , handler);
+                        router.get("/:id" , handler);
+                    - app.js
+                        app.use("/users" , usersRouter);
+
+--------------------------------------------------------------------------------
+8.Request–response lifecycle
+
+    1.Incoming request (entry point)
+        - HTTP Request : A stream of bytes sent over TCP that follow the HTTP protocol.
+        - IncomingMessage (req) : Created by Node.js when it parses the HTTP request
+        - ServerResponse (res) : Also Created by Node.js, used to write headers/body back to the client
+        - Express entry point : A function(app) that node call with (req , res)
+        - What happens before Express(Node side)
+            1. TCP connection requested
+            2. Raw bytes received
+            3. Node's HTTP parser :
+                - reads start line (GET /path HTTP/1.1)
+                - parses header
+            4. Node creates:
+                - req - http.IncomingMessage - readable stream
+                - res - http.ServerResponse - writable stream
+            5. Node emits a request event
+        - Where Express enters (exact hand-off)
+            - When you write  
+                const app = express();
+                http.createServer(app).listen(3000);
+
+                server.on("request",(req,res) => {
+                    app(req , res) // this is where integration happen between Node and express
+                })
+        - At the moment Express receive them
+            - req is a readable stream
+            - res is a writable stream
+            - No body has been parsed
+            - No params exist
+            - No middleware run
+                e.g :   req.method -> "GET"
+                        req.url -> "/users/43?active=true"
+                        req.headers -> parsed headers
+                        req.body -> undefined
+            - Express is intentionally lazy (only headers are parsed)
+                - Parsing body is expensive
+                - Not every request need request body
+                - middleware decides what to parse
+                    - That's why
+                        - express.json() exists
+                        - express.urlencoded() exists
+                        - Body parsing is opt-in
+        - NODE CREATES REQ/RES, EXPRESS CONSUME THEM. 
+    2. Middleware execution
+        - A Middleware is a function that has access to req, res and next.
+            - (req, res, next) => {}
+        - A Middleware execution is sequential traversal of middleware stack until response is sent back or the stack ends
+        - Middleware execution order is strictly order of registration
+        - When Node call app -> app(req, res);
+            - app.handle(req, res); -> app function called
+            - inside app.handle, Express does
+                - router.handle(req ,res ,fileHandler) - This is where middleware execution begins (router called)
+        - next() means : I'm done with my work, Please go to next matching layer.
+        - Middleware execution + routers
+            - app.use("/user" , apiRouter)
+
+                    app.stack
+                        ↓
+                    router layer
+                        ↓
+                    router stack
+                
+                - Layer - stack[Layer , Layer] 
+                - stack[0] -> Layer - stack[Layer] .......nested depends upon routes
+
+            - Router middleware run only after its mount path matches
+    3. Route handler Execution
+        - A route handler is a function that handles a HTTP request for a specific method and path 
+        - Node -> app(req, res) -> app.router.handle() -> Layer match ? -> Router match ? -> Router handle executes
+            - Router handler reaches only after all matching middlewares called next()
+            - Express find the first matching middleware layer
+        - middleware  -> (req, res, next) => {}
+        - router handler -> (req , res) => {}
+        - app.get("/users/:id" ,(req , res) => {
+                console.log(req.params.id);
+                res.json({id : req.param.id});
+          })
+            - Express extracts params (req.param = { id : "data" })
+            - Route handler function called
+            - Route handler write headers/body
+            - Route handler end the response with res.json()
+            - Express stop the lifecycle
+
+                    app.stack
+                        ↓
+                    router layer
+                        ↓
+                    router stack
+                        ↓
+                    router handler
+
+        - res.send() / res.json() / res.end() -> will end the lifecycle of request.
+        - MIDDLEWARE --> PIPELINE & ROUTER HANDLER - DESTINATION 
+    4. Response sent (ending the lifecycle) 
+        - The request-response life cycle end's where underlying ServerResponse stream is closed.
+        - Lifecycle ends when res.end() is called.
+        - res.json() and res.send() eventually calls res.send()
+            - res.send()
+                - Set headers (if not already set)
+                - writes response body
+                - calls res.end() - the lifecycle is ended.
+        - Different ways to end the response
+            - res.send("hello")
+                - Sends String/Buffer/Object
+                - Sets Content-Type
+                - Ends response 
+            - res.json({id : 42})
+                - Convert Object to String
+                - Sets Content-Type : application/json
+                - Ends response
+            - res.end()
+                - low level node api
+                - Sends raw bytes
+                - Ends response immediately
+        - Partial responses (advanced)
+            - res.write("hello"); // request still alive
+            - res.write("world");
+            - res.end()
+
+--------------------------------------------------------------------------------
+9. next() behavior
+    - next() tells Express to continue iterating the middleware stack
+    - Internally
+        - Express keep a pointer(index) to router.stack
+        - Calling next(), increment that pointer
+        - Express decides which layer should run next
+        - Conceptual code
+            function next() {
+                index++;
+                runNextMatchedLayer();
+            }
+    - When to use next()
+        - Logging middleware
+        - Auth checks (if possible)
+        - validation middleware
+        - Any middleware that does not end the response    
+    - If next() is not called in middleware, it wait forever over there, it will not process further, end'sup client receives connection timeout 
+    - next(err) - error mode
+        - switched Express into error-handling mode
+        - stops normal middleware execution
+        - skip request handling
+        - search for (err, req, res, next) - error-handling middleware
+        - Error middleware must have 4 arguments
+--------------------------------------------------------------------------------
+10. Short-circuiting
+    - It means intentionally stopping the request-response lifecycle before it reaches to the route handler.
+    - This is essential for 
+        - Authorization
+        - Authentication
+        - Validation
+        - Rate Limiting
+        - Feature flags
+    - next() -> to continue & res.send() -> to stop
+
+        -   function guard(req, res, next) {
+                if(!req.header.authorization) {
+                    return res.status(401).send("Missing token"); -> Stop (short-circuit)
+                }
+                next(); -> continue
+            }
+
+                    Layer : guard
+                        ↓  token missing
+                    res.send("Missing token");
+                        ↓
+                    res.end(); end ServerResponse stream
+                        ↓
+                    LifeCycle ends
+
+        -   function auth(req, res, next) {
+                const token = req.headers.authorization;
+                if(!token) {
+                     return res.status(401).send("unauthorized"); -> Stop (short-circuit)
+                } 
+                //return keyword is required to return from function, if missed end up processing next middleware.
+                
+                req.user = decodeToken(token);
+                next();
+            } 
+                
+        -   app.use(rateLimiter);
+            app.use(auth);
+            app.use(validateInput);
+            app.post("/users" , handler);
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------

@@ -9,5 +9,6 @@ usersRouter.get("/:id", (req, res, next) => {
 usersRouter.get("/", (req, res, next) => {
     res.send("all users");
 });
-
+// console.log("user router ---> ", usersRouter);
+// console.log("user Layer ---> ", usersRouter.stack[0].route);
 export default usersRouter;

@@ -14,7 +14,7 @@ console.log(app.router.stack[2]); // "/api" router
 
 --------------------------------------------------------------------------------
 8. Middleware stack structure (internal) 
-----------------------------------------
+
  - Express convert each registration into an internal object called Layer and pushes into the stack (app.router.stack -> Express middleware stack)
 
  - A Layer is one executable unit in the Express middleware stack, along with it's rule to decide when it should run.
@@ -27,6 +27,7 @@ console.log(app.router.stack[2]); // "/api" router
     - Express is literally an Ordered array of Layer Objects.
 
         stack [
+            // one executable unit
             Layer {
                 handle,     // function to execute
                 matchers,   // path-matching logic
@@ -104,7 +105,7 @@ app.get("/getTest", (req, res, next) => {
 });
 
 Layer {
-  handle: [Function: handle], //middleware fb
+  handle: [Function: handle], //middleware fn
   keys: [],
   name: 'handle',
   params: undefined,
@@ -179,7 +180,7 @@ Layer {
     strict: undefined,
     stack: [ [Layer], [Layer] ] -> internal router (users, orders)
   },
-  keys: [], -> params - example : req.param.id
+  keys: [], -> params - example : req.param.id of Layer
   name: 'router',
   params: undefined,
   path: undefined,

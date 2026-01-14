@@ -3,7 +3,7 @@
     - Node provide the HTTP module
     - It can create an HTTP server
     - It listen to the port
-    - It receives request  and send response
+    - It receives request and send response
     - NODE JS IS THE ACTUAL SERVER
     
     - Express is a web framework
@@ -58,8 +58,8 @@
         - app is instance of a function
         - app.use is typeof function
             eg : function createServer() {
-                    function createApp(req, res, next){
-                        app.handle(req, res, next)
+                    function app(req, res, next){
+                        app.handle(req, res, next) // handle can be any http method
                     } //function
                     app.use = function use(){} //app treated as object, bounded with methods
                     app.get = function get(){}
@@ -73,7 +73,7 @@
     2. router Object
         - express.Router() is mini Express app that can :
             - register routes
-            - register middlewares in middleware stack
+            - register middlewares 
             - be mounted on the main app
         - It is introduced for
             - Group related routes
@@ -133,7 +133,7 @@
             - app is the root express application
             - the entry point for all http requests 
             - the only object that :
-                - can start a server
+                - can start a server (listen to a port)
                 - can integrate with Node's http layer
         - router
             - A modular, mountable request handler
@@ -145,8 +145,8 @@
                 function app(req, res, next) {
                     app.handle(req, res, next)
                 }
-
-                app._router = new Router();
+                app.router.stack = []
+                app._router = new Router(); // mountable request handler
                 app.listen = function listen() {}
 
                 return app;
@@ -239,7 +239,7 @@
                     - Matches 
                         GET /users/42
                         GET /users/abc
-                    - req.param ={ id : 42 }
+                    - req.param = { id : 42 }
                     - Does not match
                         GET /users
                         GET /users/42/profile    
@@ -263,7 +263,7 @@
                             GET /users/42
     3. First-match wins
         - Express executes the first route or middleware whose method + path match the request
-        e.g :   app.use("/users", usersRouter);
+        e.g :   app.use("/users", usersRouter); // use checks only prefix
                 app.get("/users/:id" , handler)
 
                 - GET /users/1
@@ -294,14 +294,13 @@
                     - /users/me never reaches as use() matches the prefix
                     - Route is shadowed
                 - CORRECT USAGE 
+                    - app.js
+                        app.use("/users" , usersRouter);
                     - user.route.js
                         router.get("/me" , handler);
                         router.get("/:id" , handler);
-                    - app.js
-                        app.use("/users" , usersRouter);
-
 --------------------------------------------------------------------------------
-8.Request–response lifecycle
+8. Request–response lifecycle
 
     1.Incoming request (entry point)
         - HTTP Request : A stream of bytes sent over TCP that follow the HTTP protocol.
@@ -398,7 +397,7 @@
     4. Response sent (ending the lifecycle) 
         - The request-response life cycle end's where underlying ServerResponse stream is closed.
         - Lifecycle ends when res.end() is called.
-        - res.json() and res.send() eventually calls res.send()
+        - res.json() and res.send() eventually calls res.end()
             - res.send()
                 - Set headers (if not already set)
                 - writes response body
@@ -420,9 +419,9 @@
             - res.write("hello"); // request still alive
             - res.write("world");
             - res.end()
-
 --------------------------------------------------------------------------------
 9. next() behavior
+
     - next() tells Express to continue iterating the middleware stack
     - Internally
         - Express keep a pointer(index) to router.stack
@@ -438,7 +437,7 @@
         - Auth checks (if possible)
         - validation middleware
         - Any middleware that does not end the response    
-    - If next() is not called in middleware, it wait forever over there, it will not process further, end'sup client receives connection timeout 
+    - If next() is not called in middleware, it wait forever there, it will not process further, end'sup client receives connection timeout 
     - next(err) - error mode
         - switched Express into error-handling mode
         - stops normal middleware execution
@@ -447,6 +446,7 @@
         - Error middleware must have 4 arguments
 --------------------------------------------------------------------------------
 10. Short-circuiting
+
     - It means intentionally stopping the request-response lifecycle before it reaches to the route handler.
     - This is essential for 
         - Authorization
@@ -454,7 +454,7 @@
         - Validation
         - Rate Limiting
         - Feature flags
-    - next() -> to continue & res.send() -> to stop
+    - next() -> to continue & res.end() -> to stop
 
         -   function guard(req, res, next) {
                 if(!req.header.authorization) {
@@ -486,13 +486,385 @@
             app.use(auth);
             app.use(validateInput);
             app.post("/users" , handler);
+--------------------------------------------------------------------------------
+11. Request object internals (req)
 
+    1. req build on Node.js IncomingMessage
+        - At the node.js level, an HTTP request is represented by :
+            - http.IncomingMessage - readable stream
+        - TCP socket -> HTTP parser (Node core) -> IncomingMessage(req) -> ServerResponse(res)
+        - Express mutate the same req object
+    2. req.headers
+        - Headers are parsed by the Node.js before express runs
+        - This comes directly from IncomingMessage
+            {
+                host : "api.example.com"
+                'content-type' : "application/json",
+                authorization : "Bearer <token>"
+            }
+        - HTTP headers are case-insensitive
+        e.g :   function authMiddleware(req, res, next) {
+                    const authHeader = req?.headers?.authorization;
+
+                    if(!authHeader) {
+                        return res.status(401).send("Missing Authorization header");
+                    }
+                    if(!authHeader.startsWith("Bearer ")) {
+                        return res.status(401).send("Invalid token format");
+                    }
+
+                    req.token = authHeader.slice(7) // direct mutation of req object
+                    req.user = decodeToken(authHeader);
+                    next();
+                }
+    3. req.query
+        - req.query is not part of Node, it is derived by express from the URL.
+        - GET /users?page=2&limit=10
+        - Node give Express : req.url = "/users?page=2&limit=10"
+        - Express parses the query string
+        - result is attached to req.query
+            - req.query = { page : '2' , limit : '10' } //values are strings
+        - e.g:  
+                function pagination(req, res, next) {
+                    const page = Number(req.query.page || 1);
+                    const limit = Number(req.query.limit || 20); //typeof value is string, we have to convert to Number
+
+                    if(Number.isNaN(page) || Number.isNan(limit)) {
+                        return res.status(400).send("Invalid pagination params");
+                    }
+                    req.pagination = { page, limit};
+                    next();
+                }
+    4. req.params
+        - req.params does not exist until:
+            - A route matches
+            - And that route has path parameters
+            - e.g : app.get("/users/:id" , handler);
+                    - When /users/42 matches
+                    - Express extracts { id : '42' };
+                    - attaches to req.params
+            - Each route is a Layer with :
+                - Path regex
+                - Parameter keys
+            - e.g : 
+                  - app.get("/users/:id" , async (req, res, next) => {
+
+                        const { id : userId } = req.params;
+
+                        if(!/^\d+$/.test(userId)) {
+                            return res.status(400).send("Invalid user id");
+                        }
+
+                        const user = await db.user.findById(userId);
+
+                        if(!user) {
+                            return res.status(404).send("User Not Found");
+                        }
+
+                        res.json(user);
+                    })
+    5. req.body
+        - by default req.body = undefined
+        - why ?
+            - HTTP request bodies are stream
+            - reading them consumes the streams
+            - Express refuses to guess how to pass.
+        - Body parsing is middleware
+            - app.use(express.json())
+            - Reads the stream
+            - Buffers into the memory
+            - Parse JSON
+            - Mutates req.body
+        - e.g:  app.post("/users", express.json() ,(req ,res ,next) => {
+                    
+                    const email = req?.body?.email;
+
+                    if(!email) {
+                        return res.status(422).send("Email is required");
+                    }
+
+                    const user = await db.users.create(req.body);
+                    
+                    res.status(201).json(user);
+                })
+    6. How middleware mutates req
+        - req is one single object created by Node.js
+        - Flow
+                IncomingMessage (req)
+                        ↓
+                middleware 1 mutates req   -> app.use(logger)
+                        ↓
+                middleware 2 mutates req   -> app.use(auth)
+                        ↓
+                middleware 3 mutates req   -> app.use(loadUser)
+                        ↓
+                route handler reads req
+        - Mutation means adding/modifying properties on req.
+            - req.user = user;
+            - req.token = token;
+            - req.pagination = { page, limit };
+            - req.context = {};
 --------------------------------------------------------------------------------
+12. Response object internals (res) 
+
+    1. res built on Node.js ServerResponse
+        - http.ServerResponse
+        - Is created by Node for each request
+        - Is a writable stream connected to the client socket
+        - Represents the HTTP response socket
+        - In Node we have to do everything manually:
+            - res.statusCode(200);
+            - res.setHeaders('Content-Type' , 'text/plain');
+            - res.write("hello") //body
+            - res.end();
+        - What Express does
+            - It takes same ServerResponse Object
+            - Adds helper methods
+            - Adds Convenience abstractions.
+    2. res.send()
+        - res.send(body) does
+            1. check response state  
+                - Has the response already sent (res.finished = true/false)
+                - still headers are mutable ? (res.headersSet = true/false)
+            2. Infer content type
+                - String -> text/html
+                - Object/Array -> JSON
+                - Buffer -> application/octet-stream
+            3. Set headers (if not already set)
+                - Content-Type
+                - Content-Length
+            4. Write data to the socket
+                - Uses Node's stream write
+            5. End the response
+                - Calls res.end()
+        - So Conceptually
+            res.send = function(body) {
+                prepareHeader(body);
+                writeToSocket(body);
+                
+                res.end();
+            }
+        - res.send() -> ALWAYS END THE RESPONSE
+    3. res.json()
+        - res.json() is fundamentally same as res.send()
+        - res.json = function(obj) {
+            res.setHeader('Content-Type', 'application/json');
+            res.send();
+        }
+    4. res.end() 
+        - "point of no return"
+        - It is pure Node.js
+        - close the writable stream and flush data to the client
+        - After res.end()
+            - res.finished = true
+            - res.headersSet = true
+            - socket is closed
+            - res.status(204).end()
+    5. "Headers already sent” — why it happens internally
+        - "Cannot set headers after they are sent" - error
+        - You are trying to HTTP headers after the response has sent back to client.
+            - Calling res.send() twice
+            - Calling next() after sending a response
+            - Forgetting return
+                - res.send("OK")
+                - res.end()
 --------------------------------------------------------------------------------
+13. What ends the request lifecycle 
+
+    1. res.send vs res.end 
+    2. Not calling next() - request will hang forever, no return
+    3. Hanging request bugs 
+        - Missing return
+        - Conditional logic with no exit
+        - Async function that never resolves
+        - Forgotten next(err)
 --------------------------------------------------------------------------------
+14. Sync vs async middleware behavior 
+
+    - Express executes middleware synchronously, One layer at a time,
+        - for each layer in stack:
+            call layer.handler(req, res, next);
+    - Express does not await anything.
+    - Express does not wrap handlers in try/catch.
+    - Express assumes Layers are synchronous by default.
+
+    1. Sync throws 
+            app.use((req, res, next) => {
+                if(!req.headers.authorization) {
+                    throw new Error("Missing auth");
+                }
+                next();
+            })
+        - Error is thrown
+        - stack unwind
+        - Express catches it
+        - Express automatically call next(err)
+        - Error-handling middleware is invoked
+            - This happens during the same call stack
+            - Express can intercept it
+
+    2. Async promise rejections 
+            app.use(async (req, res, next) => {
+                const user = await getUser();
+
+                if(!user) {
+                    throw new Error("User not found"); // it is thrown but no one(express) is there to handle
+                }
+
+                return next();
+            })
+        - await pause th execution
+        - promise rejects
+        - Express is no longer in call stack
+        - Error is unhandled
+        - process may crash or hang
+        - Why ?
+            - Express never awaited the promise
+            - Express never sees the rejection
+        - Every async middleware must follow one of these patterns:
+            - return next()
+            - return next(err)
+            - return res.send(...)
+
+    3. Why Express doesn’t catch async errors 
+        - Express predates :
+            - async/await native promise in Node
+        - Express assumes :
+            - Middleware signals completion via:
+                - next()
+                - next(err)
+        - It our responsibility to handler async error, Not express.
+        - correct usage:
+
+                app.use(async (req, res, next) => {
+                    try {
+                        const user = await getUser();
+                        if(!user) {
+                            return next(new Error("No user"))
+                        }
+                        req.user = user;
+
+                        return next(); // return keyword used to stop Javascript execution
+                    } catch(err) {
+                        return next(err);
+                    }
+                })
+        - Every async middleware must manually forward errors using next(err);
+        NOTE : In Express version 5.X.X route handle promises, It will behave unlike version 4, wait for the response and return a Promise, Where handler will deal with promise
+        
+            - sync 
+                - handler(req, res, next)
+            - async
+                - const result = handler(req ,res, next);
+
+                  if(result is a Promise) {
+                    result.catch(next);
+                  }
 --------------------------------------------------------------------------------
+15. Error-Handling middleware
+    - What makes a middleware make an error handler
+        - It is nothing special, a pure Javascript function, which have 4 parameter and 1st one is error
+        - signature
+            - (err, req, res, next) => {} - error handler
+            - (req, res, next) => {} normal middleware/request handler
+    - How Express enters "error mode"
+        - If next(err) called
+        - A synchronous throws occur
+        - A returned promise rejected (express 5)
+    - Internal stack traversal
+        - next(err) -> (err, req, res, next) => { next(err) } -> (err, req, res, next) => {}
+    - Placement rules
+        - must be last
+    - multiple error handlers
+        - app.use(logError)
+        - app.use(formatError)
+        - app.use(sendError)
+
+        function logError(err, req, res, next) {
+            console.log(err);
+            next(err);
+        }
+
+        function sendError(err, req, res, next) {
+            res.status(500).json({message : err.message})
+        }
+    - correct usage :
+        app.user((err , req, res, next) => {
+            console.log(err);
+
+            if(req.headerSent) {
+                return next(err)
+            }
+
+            res.status(500).json({ message : err.message || "Internal server error"});
+        })
 --------------------------------------------------------------------------------
---------------------------------------------------------------------------------
+16. Async error handling patterns (deep, descriptive)
+
+    - This topic exist because of a fundamental mismatch between :
+        - Javascript's async execution model
+        - Express's middleware execution model
+    - Express moves through middleware synchronously
+    - Async code finishes later
+    - Errors that are happened are invisible unless explicitly forwarded.
+
+    1. why "try/catch" everywhere feels correct(but it flawed)
+        - You are repeating infrastructure logic
+        - Humans forget paths
+        - Inconsistency across the code
+    2. The async handler wrapper 
+        - Wrapper (required for Express 4 and less versions)
+            const asyncWrapper = fn => 
+            (req, res, next) => {
+                Promise
+                    .resolve(fn(req, res, next))
+                    .catch(next)
+            }
+        - Step 1: what fn really is 
+            - async (req , res) => {
+                    const order = await getOrder();
+                    res.json(order);
+              }  
+            - It is async function return a promise 
+        - Step 2 : What wrapper does to Express
+            - Express normally does
+                - handler(req, res, next)
+            - The wrapper replaces that with :
+                - Promise.resolve(handler(req, res, next))
+                         .catch(next)
+            - If the handler resolves -> nothing happens
+            - If the handler rejects -> next(err) is called
+            - This is the exact signal Express needs to enter error mode
+        - Step 3 : Why Promise.resolve() is used
+            - Promise.resolve() ensure
+                - Sync handler still work
+                - Sync throw becomes a rejected Promise
+                - Async and Sync handlers behave the same
+            - This unifies all failure modes into one pipeline
+    3. How this changes your route code 
+        - Without wrapper, your brain must track:
+            - where errors are caught
+            - whether next(err) is called
+            - whether return is missing
+        - With wrapper, your brain can assume:
+            - "Any thrown or rejected error will reach the error middleware"
+            - async function → returns a Promise
+            - normal function → returns a value or throws synchronously
+            - router.get(
+                    "/orders/:id", 
+                    asyncHandler(async (req, res) => {
+                        const order = await getOrder(req.params.id);
+
+                        if(!order) {
+                            return res.status(404).send();
+                        }
+
+                        res.json(order)
+                    })
+               );
+            - All async failure will call next(err)
+            - All errors arrive at :
+                - app.use((err ,req ,res, next) => {})
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------

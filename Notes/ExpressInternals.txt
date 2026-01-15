@@ -143,9 +143,9 @@
 
         eg : function createApp() {
                 function app(req, res, next) {
-                    app.handle(req, res, next)
+                    app.handle(req, res, next);
                 }
-                app.router.stack = []
+                app.stack = []
                 app._router = new Router(); // mountable request handler
                 app.listen = function listen() {}
 
@@ -221,13 +221,24 @@
         - Express executes a router handler only if the HTTP method matches with route's declared method
             e.g : app.get("/users" , routeHandler)
                   app.post("/users" , routerHandler)
-        - HTTP method comes from Node.js (req.method), Node parses it from HTTP request.
+        - HTTP method comes from Node.js (req.method), Node parses it from HTTP request(IncomingRequest).
+        - Express iterates through its stack. Each Layer associated with a route property, and that route has a method property
+        - Express checks if Layer.route.methods[req.method.toLowerCase()] is truthy. If you sen POST to a GET route, the check fails, and Express moves to the next layer in the stack.
+            - // Internal representation (simplified)
+                    Layer {
+                    path: '/users',
+                    route: {
+                        path: '/users',
+                        methods: { get: true }, // This layer only handles GET
+                        stack: [ [Function: handler] ]
+                        }
+                    }
         - app.use() does not care about HTTP methods, It matches all methods, Generally used for method-agnostic middleware
             e.g : Auth middleware often uses use()
+
     2. Path matching
         - The Path matching is a process by which Express compare the request URL with a registered route path to decide whether a handler should run.
         - Query String are excluded in Path Matching
-
         e.g :   app.get("/users" , routeHandler)
                     - Matches 
                         GET /users
@@ -302,7 +313,7 @@
 --------------------------------------------------------------------------------
 8. Request–response lifecycle
 
-    1.Incoming request (entry point)
+    1. Incoming request (entry point)
         - HTTP Request : A stream of bytes sent over TCP that follow the HTTP protocol.
         - IncomingMessage (req) : Created by Node.js when it parses the HTTP request
         - ServerResponse (res) : Also Created by Node.js, used to write headers/body back to the client
@@ -529,10 +540,13 @@
                     const page = Number(req.query.page || 1);
                     const limit = Number(req.query.limit || 20); //typeof value is string, we have to convert to Number
 
+                    //or
+                    // const { Number(page || 1) , Number(limit || 20) } = req.query
+                
                     if(Number.isNaN(page) || Number.isNan(limit)) {
                         return res.status(400).send("Invalid pagination params");
                     }
-                    req.pagination = { page, limit};
+                    req.pagination = { page, limit };
                     next();
                 }
     4. req.params
@@ -639,6 +653,7 @@
                 - Calls res.end()
         - So Conceptually
             res.send = function(body) {
+
                 prepareHeader(body);
                 writeToSocket(body);
                 
@@ -750,14 +765,14 @@
                     }
                 })
         - Every async middleware must manually forward errors using next(err);
-        NOTE : In Express version 5.X.X route handle promises, It will behave unlike version 4, wait for the response and return a Promise, Where handler will deal with promise
+        NOTE : In Express version 5.X.X route handle promises rejections, It will behave unlike version 4, wait for the response and return a Promise, Where handler will deal with promise
         
             - sync 
                 - handler(req, res, next)
             - async
                 - const result = handler(req ,res, next);
 
-                  if(result is a Promise) {
+                  if(result is a Promise) { //Promise rejection
                     result.catch(next);
                   }
 --------------------------------------------------------------------------------
@@ -789,7 +804,7 @@
             res.status(500).json({message : err.message})
         }
     - correct usage :
-        app.user((err , req, res, next) => {
+        app.use((err , req, res, next) => {
             console.log(err);
 
             if(req.headerSent) {

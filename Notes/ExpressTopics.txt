@@ -92,6 +92,7 @@ B. REST API DESIGN & BEST PRACTICES
     - PUT 
     - PATCH 
     - DELETE 
+    - OPTIONS
 21. Safe vs idempotent methods 
     - Retry behavior 
     - Why idempotency matters 
@@ -164,6 +165,12 @@ B. REST API DESIGN & BEST PRACTICES
     - Payload size limits 
     - Abuse prevention 
 
+Queries
+----------
+1. What is CORS ?
+2. 405 status code ?
+3. Difference between app.all vs app.use?
+
 C. PRODUCTION-GRADE EXPRESS 
 --------------------------
 39. Graceful shutdown 
@@ -174,3 +181,4 @@ C. PRODUCTION-GRADE EXPRESS
     - Request logging 
     - Correlation IDs 
     - Debugging async flows 
+

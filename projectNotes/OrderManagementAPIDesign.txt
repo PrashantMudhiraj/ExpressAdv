@@ -1,0 +1,9 @@
+Routes
+    - /orders -> list of order
+    - /orders/{orderId} -> single order
+
+    - /orders/{orderId}/items -> list of order items 
+    - /orders/{orderId}/items/{orderItemId} -> single order item 
+
+    - /customers -> list of customers
+    - /customers/{customerId} -> single customer

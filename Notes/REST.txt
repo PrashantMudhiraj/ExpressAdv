@@ -1,0 +1,317 @@
+1. REST principles (practical)
+
+    - INTRO
+        - REST is a set of architectural constraints(non-negotiable boundaries) that leverages(to build upon) HTTP's existing semantics(which are already existing such as methods)
+        - REST -> REpresentational State Transfer (architectural style)
+        - REST introduced to answer below one question :
+            - How do we design APIs that keeps working when it grows and changes?
+        - REST is not about any framework
+        - REST is about rules that make APIs scalable and predictable
+        - REST uses HTTP properly
+            - URLs
+            - Methods (GET, POST, etc..)
+            - Status Code
+            - Headers
+            - REST say's don't fight with HTTP, Use it as it is designed.
+        - URI - Uniform Resource Identifier
+        - URL - Uniform Resource Location
+
+    1. Resource-oriented design
+        - What does "resource" mean?
+            - In Rest, the focus is on "Resource" rather than "action"
+            - Resource is a thing, It is not a function/button/action. 
+                - Examples of things are Order, Customer, Payment. (resource)
+                - Examples of Not things(function/button/action) are createOrder/cancelOrder/shipOrder
+                - REST hates action based URL's (Remote Procedure Call - RPC style routing) 
+                    - POST /createOrder
+                    - POST /cancelOrder
+                    - The URL describes what you want to do(createOrder , cancelOrder), not what you are working with (order, payment, customer)
+                - URL's should point to things, not actions.
+                    - "what action am i performing?"
+                    - "what thing am i working with?"
+                        - /orders -> all orders
+                        - /orders/123 -> one specific order
+                    - HTTP methods are taking care of actions
+                        - GET  -> give me data
+                        - POST -> create something new
+                        - PATCH -> update existing data
+                        - DELETE -> remove something
+                - So,
+                    - POST /orders -> create order
+                    - GET /orders/1 -> get order
+                    - PATCH /orders/1 -> change order
+
+    2. Stateless
+        - Stateless means,"The Server does not remember you from previous request"
+        - For every request must include:
+            1. Who you are(token)
+            2. What resource you want(URL)
+            3. What you want to do(HTTP method)
+            4. Any required data(body/query)
+                GET /orders/123
+                Authorization: Bearer <token>
+        - The server : 
+            - Reads token
+            - Check permissions
+            - Fetch order
+            - Sends response
+            - Forgets everything
+        - Why this fails in production (state full):
+            - Production Express apps run in multiple instances (using PM2 clusters or Kubernetes pods). If Request 1 goes to Instance A and Request 2 goes to Instance B, Instance B has no idea about the state stored in Instance A. The client’s experience becomes inconsistent and buggy
+
+    3. Client-server separation
+        - Client and Server have different jobs
+            - Client(frontend, mobile app): The Client owns the UI and the user experience
+                - Decide user flow
+                - Handles screen and buttons
+            - Server : The server owns the data and business logic
+                - Stores data
+                - Applies rules
+                - Return results
+        - The Server doesn't care about UI flows
+
+        - What is the thing ? -> resource
+        - What do i want to do to it ? -> HTTP method
+        - What changed ? -> representation(JSON)
+        - REST is "changing the state of things using HTTP rules"
+------------------------------------------------------------------------------------------------
+2. Resource naming & URL design 
+
+    1. Nouns vs verbs
+        - URLs name things.
+        - HTTP methods describe action
+        - If the URL contains a verb, it's usually wrong (verb based URLs)
+            - This is bad because URLs describe actions
+            - HTTP methods becomes meaningless
+            - Everything turns into POST
+            - API become hard to reason about
+                - /createOrder
+                - /getOrders
+                - /cancelOrder
+                - /updateOrderStatus 
+        - Good (noun based URLs)
+            - /orders
+            - /orders/123
+            - Now actions are expressed by HTTP methods
+                Action          Method      URL
+                ------------    ------      -----------
+                Create order    POST        /orders
+                Get order       GET         /orders/123
+                update order    PATCH       /orders/123
+                Delete order    DELETE      /orders/123
+            - URL stay stable, method changes the behavior
+
+    2. Pluralization
+        - Why /orders is plural
+        - In Rest, a URL can represent:
+            - A collection of resources
+            - A single member of that collection
+            - GET /orders - Returns a collection of orders.
+            - GET /orders/:id - Returns a specific instance from a collection.
+        - using pluralization consistently prevents ambiguity. If you use /order, does is refer a collection or a single order ?
+        - using /orders clearly identifies a collection.
+
+    3. Nested resources
+        - URLs should reflects relationship between resources. If a resource belongs to another, The URI structure should show that hierarchy.
+        - Resource does not make sense without parent.
+        - orderItem cannot exit without an order.
+            - /orders/123/items -> single order with multiple order items
+            - /orders/123/items/456 -> single order with single order item.
+        - Internal Execution (The "mergeParams" constraint) ;
+            - When you see Nested parameters, The Child router's does have access to parent req.params by default. T
+            - This is an internal design choice to keep routers isolated. 
+            - To access parent req.params, we should manually enable it.
+                - e.g:
+
+                    const orderRouter = express.Router();
+                    const orderItemRouter = express.Router({ mergeParams :  true });
+
+                    orderRouter.use("/:orderId/Items", orderItemRouter);
+
+                    orderItemRouter("/:orderItemId" , (req , res) => {
+                        const { orderId, orderItemId } = req.params;
+
+                        res.json({ orderId, orderItemId })
+                    })
+        
+    4. Avoid deep nesting
+        - maximum hierarchy we should consider is 2(levels)
+        - to avoid complexity (authorization)
+        - For scalability
+        - tight coupling
+        - Industry rule of thumb
+            - "At most one level of nesting beyond the root resource"
+        
+        Drawbacks:
+            1. Regex Complexity : Internally, Express converts these paths into complex regular expression. Longer path is directly increasing the loaf/work on path-to-regex.
+            2. Client burden : for every request client needs to send different Id's
+            3. Database coupling : Your API structure becomes strictly tied to your database schema hierarchy.
+------------------------------------------------------------------------------------------------
+3. HTTP methods
+
+    - In RESTful API design, HTTP methods(often called verb) define the action to be performed on the resource identified by the URI.
+
+        1. GET method:
+            - I want current representation of this resource. I am not changing anything.
+            - Correct usage :
+                - GET /orders/123
+                - Fetch order 123
+
+                    app.get("/order/:id", async (req, res) => {
+                        const { id } = req.params;
+                        const order = await orderService.getById(id);
+
+                        if(!order) {
+                            return res.status(404).json({ message : "order not found"})
+                        }
+
+                        res.json(order);
+                    })
+
+            - Key Properties :
+                - No mutation
+                - No counters
+                - No logging that affects business state
+
+        2. POST method:
+            - Please create a new subordinate resource under this collection
+            - It is used to create a new entity to the specified resource, often resulting in a change in state or side effects on the server
+            - * POST is not idempotent *
+            - * calling it twice may create two resources (duplicates)*
+            - e.g :
+                - POST /orders
+                
+                    app.post("/orders', express.json(), (req, res) => {
+                        /* IMPORTANT : before creating resource we must sanitize(validations) the request. */
+                        const order = await orderService.create(req.body);
+                        res.status(201).json(order);
+                    })
+
+        3. PUT method:
+            - Replace the entire state of the resource with what I'm sending
+            - It is not a partial update it is Complete replacement of resource by request body
+            - PUT is dangerous
+                - Missing fields amy be overwritten or removed
+                - Accidental data loss in common.
+            - PUT is idempotent, because  if you send the exact same request 10 times, the state of the server is same as after the first request
+            - PUT /orders/123
+                {
+                    status : "shipped"
+                }
+                - data loss like orderId, shipping details etc..
+
+        4. PATCH method:
+            - Partial update, Apply these changes on the existing resource
+            - It does not replace everything
+            - e.g:
+                - PATCH /orders/123
+
+                    app.patch("/orders/:id", express.json() , async(req, res, next) => {
+                        const { id } = req.params;
+                        const data =  req.body;
+                        const updated = await orderService.update( id, data);
+
+                        res.json(updated);
+                    })
+            - Typical use cases :
+                - update shipping status
+                - update shipping address
+                - cancel an order
+            - Safer than PUT, as it is partial update
+
+        5. DELETE method:
+            - Remove this resource
+            - Data is often soft-deleted
+            - Resource may be marked as inactive
+            - e.g:
+                - DELETE /orders/123
+
+                    app.delete("/orders/:id" , async (req, res) => {
+                        const { id } = req.params;
+
+                        await orderService.delete(id);
+
+                        res.status(204).end(); 
+                    })
+                - Why 204 No content:
+                    - Resource is gone
+                    - No response body needed
+        
+        6. OPTIONS method:
+            - What is allowed to be done with this resource ?
+            - An OPTIONS request asks the server :
+                - For this URL, which HTTP methods, headers and behaviors are supported ?
+                - e.g :
+                    - OPTIONS /orders/123
+                    - The server will respond with capabilities, not data
+            - This is essential for :
+                - CORS
+                - API gateways
+                - Security enforcement
+                - Client tooling
+            - OPTIONS and CORS (Most Common Real-World Use)
+                - The real problem browsers have
+                - * Browsers enforces Same-Origin Policy *:
+                    - Javascript cannot freely call API's of other domain
+                    - This is security rule, not a backend choice.
+            - What triggers a CORS preflight ?
+                - A browser sends a OPTIONS when:
+                    - Method is not GET/POST
+                    - OR custom headers are used
+                    - OR content-type is not simple (application/json often triggers it)
+                    - e.g :
+                        - PATCH /orders/123
+                        - Authorization: Bearer <token>
+                        - Content-type : application json
+                    - Browser behavior:
+                        1. Sends OPTIONS first
+                        2. Ask permissions
+                        3. Only then send PATCH
+                    - Preflight OPTIONS request
+                        - OPTIONS /orders/123
+                        - Origin: https://frontend.example.com
+                        - Access-Control-Request-Method: PATCH
+                        - Access-Control-Request-Headers: Authorization, Content-Type
+                    - Expected Response
+                        - HTTP/1.1 204 No Content
+                        - Access-Control-Allow-Origin: https://frontend.example.com
+                        - Access-Control-Allow-Methods: GET, PATCH, DELETE  //yes, you are allowed to do this
+                        - Access-Control-Allow-Headers: Authorization, Content-Type
+            - OPTIONS is about permissions, Not Data
+            - e.g :
+                        app.get("/orders/:id",() => {})
+                        app.patch("/orders/:id",() => {})
+                        app.delete("/orders/:id",() => {})
+                - This route support GET, PATCH, DELETE, So an OPTIONS request returns:
+                    - Access-Control-Allow-Methods : GET, PATCH, DELETE
+            - When you Must Handle OPTIONS explicitly
+                1. You implements customs CORS logic
+                2. You block or allow methods dynamically
+                3. You sit behind strict API gateway
+
+                - e.g:  
+                        app.options("/orders/:id" , (req, res) => {
+                            res.set({
+                                Access-Control-Allow-Methods: 'GET, PATCH, DELETE',
+                                Access-Control-Allow-Headers: 'Authorization, Content-Type'
+                            })
+
+                            res.sendStatus(204);
+                        }
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------

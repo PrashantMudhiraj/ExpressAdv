@@ -290,7 +290,7 @@
                 3. You sit behind strict API gateway
 
                 - e.g:  
-                        app.options("/orders/:id" , (req, res) => {
+                        app.options("/orders/:id" , (req, res)) => {
                             res.set({
                                 Access-Control-Allow-Methods: 'GET, PATCH, DELETE',
                                 Access-Control-Allow-Headers: 'Authorization, Content-Type'
@@ -299,7 +299,201 @@
                             res.sendStatus(204);
                         }
 ------------------------------------------------------------------------------------------------
+4. Safe vs Idempotent HTTP Methods
+    - In distributed systems, requests WILL be retried.
+    - In distributed systems, network failures are inevitable. A client might send a request, the server might process it successfully, but the network might drop the response before it reaches the client. This is where the concepts of Safety and Idempotency become critical for building resilient backends.
+    - safe and Idempotent semantics are exist so retries don't corrupt data.
+    - Scenario
+        - Network drops after server processes the request(not sent back to client)
+        - Load balancer times out
+        - Client crashes mid-request
+        - reverse proxy retires
+        - Mobiles network resend request
+        - What happens if same request is executed again ?
+            - safe and idempotent methods are the answer to this question
+
+    1. Safe Methods
+        - A method is called as safe, when execution does not effect the server state. no matter how many times it is called.
+        - Safety is about side effects, not logic
+        - Methods : GET, HEAD, OPTIONS
+            - GET is the primary safe method
+                - GET /orders/123
+                - No database writes
+                - No counter incremented
+                - No state transitions
+                - No 'last accessed flag"
+                
+                - We are allowed to
+                    - Read data from DB
+                    - compute derived data
+                    - Log access
+    
+    2. Idempotent Methods - Same Result, Every Time
+        - A method is Idempotent if the side effects of making request multiple times is same as making it exactly one
+        - mathematically: f(x) = f(f(x))
+            - Idempotent !== Safe
+            - Idempotent can change the state.
+        - All Safe methods are idempotent, Not all idempotent are safe methods
+        - Idempotent methods: GET, HEAD, PUT, DELETE, OPTIONS
+            - GET -> getting data from server
+            - PUT -> replace the existing resource
+            - DELETE -> intent is to delete the resource (first request-> 204, second request-> 404)
+            - OPTIONS -> does not affect the state 
+        - Non-Idempotent methods: POST
+            - POST will create duplicate resource again and again.
+        - The Tricky case : PATCH is generally not guaranteed to be idempotent
+            - PATCH applies changes, not replacements
+            - If PATCH sets state explicitly
+                - It may be idempotent
+            - But consider:
+                - PATCH /orders/123
+                    {
+                        amount : "+100";
+                    }
+                - Amount increases for every request(risky)
+        - *Important*
+            - GET -> Must be side-effect free
+            - DELETE -> Must be safe to retry
+            - POST -> Must assume retires will happen and Must be protected when money or inventory is involved
+            - PATCH -> Must be explicit about state transition
 ------------------------------------------------------------------------------------------------
+5. Proper HTTP status codes
+    - Status codes are not decorations. There are primary signals to the distributed systems
+    - The HTTP status code is the primary metadata the server provides to the client. It allows client to decide the next move
+    - In Production, many actors consume your API;
+        - Browser
+        - Mobile Apps
+        - Load balancers
+        - API gateways
+        - Retry mechanism
+        - Monitoring tools
+        - Alerting systems
+    - Most of them, do not prase the response body(JSON), Only look for status code
+    - So, the Status code is your API's truth signal
+
+    - Codes
+        - 200 vs 201 “Success” Is Not One Thing
+            - 200 -> "The request succeeded"
+                - Use 200 when
+                    - You successfully retrieved the data
+                    - You successfully updated the data
+                    - The resource already exist
+                        - GET /orders/123 -> 200 OK
+                        - PATCH /orders/123 -> 200 OK
+            - 201 -> "A new resource now exists"
+                - Use 201 when
+                    - A new resource is created
+                    - The Server generated the resource identity
+                        - POST /orders/123 -> 201 created
+                        - e.g:
+                                app.post("/order" , async(req, res) => {
+                                    const order =  await orderService.create(req.body);
+                                    res.status(201).json(order);
+                                })
+                    - If we do not mention status code, By default Node send 200 code. -> res.json(order)
+
+        - 204 No Content - "Success, but nothing return"
+            - The request succeeded, and there is no response body.
+                - Use 204 when
+                    - DELETE operations
+                    - Some idempotent updates
+                    - DELETE /orders/123 -> 204 No Content
+                    - e.g:  
+                            app.delete("/orders/123",async (req , res) => {
+                                await orderService.remove(req.params.id);
+                                res.status(204).end(); // do not use send -> send will check content-type etc.. which is not required
+                            })
+
+        - 400 vs 422 Syntax vs Semantics
+            - 400 Bad Request -> "I cannot parse this request"
+                - Use 400 when:
+                    - JSON is malformed
+                    - Required fields are missing in the request
+                    - Request format is in correct.
+                        - POST /orders
+                            { invalid JSON } -> 400 Bad Request
+            - 422 Unprocessable Entity - "Request is valid, but wrong"
+                - Use 422 when:
+                    - JSON is valid
+                    - But values violates the business rules
+                        - POST /orders
+                            {
+                                quantity : -5
+                            }
+                            -> 422 Unprocessable Entity
+            - Fix 400 by correcting format
+            - Fix 422 by correcting data
+
+        - 401 vs 403 Authentication vs Authorization
+            - 401 Unauthorized - "Who are you?"
+                - Use 401 when:
+                    - Missing token
+                    - Invalid token
+                    - Expires token
+                        - GET /orders/123
+                            { no Authorization header }
+                            -> 401 Unauthorized
+            - 403 Forbidden - "I know who you are(authenticated), but not allowed"
+                - Use 403 when:
+                    - Scope/roles missing
+                        - GET /orders/123
+                            (user does not own this resource)
+                            -> 403 Forbidden
+
+        - 404 vs 409 - Absence vs Conflict
+            - 404 Not Found — “Resource does not exist”
+                - Use 404 when;    
+                    - The resource Id does not exist
+                    - The URL is valid, but the resource isn't
+                        - GET /orders/999
+                            -> 404 Not Found
+            - 409 Conflict - "State Conflict"
+                - Use 409 when:
+                    - The request conflict with the current state
+                        - PATCH /orders/123
+                            {
+                                status : "shipped"
+                            } 
+                        - But the order is cancelled
+                        - 409 Conflict
+                - Mostly use it for business logic
+
+        - 500 vs 503 - Your Fault(server) vs Temporary Failure
+            - 500 Internal server error - "Bug"
+                - Use 500 when"
+                    - unhandled exception
+                    - Programming error
+                    - Inconsistent state
+                    - This means server is broken.
+            - 503 service unavailable - "Try again later"
+                - Use 503 when:
+                    - Database is down
+                    - Dependency is unavailable
+                    - System is overloaded
+                - 503 signals
+                    - Temporary failure
+                    - Retry must succeed
+                - This is critical for :
+                    - Retry logic
+                    - Circuit breakers
+                    - Auto Scaling
+        - Status Codes Drive Client Behavior
+            if(res.status >= 500) retry();
+            if(res.status === 401) redirectToLogin();
+            if(res.status === 422) showValidationErrors();
+
+        - 3XX status codes - Redirection and Control Flow
+            - The resource you want is somewhere else, or should be accessed differently
+            - 301 Moved Permanently
+                - This resource has a new permanent URL
+                    - Response includes:   
+                        Location /new-url
+            - 302 Found (Temporary redirect)
+                - This resource is temporarily available elsewhere
+
+
+            
+
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------

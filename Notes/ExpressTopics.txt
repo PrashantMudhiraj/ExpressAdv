@@ -170,6 +170,9 @@ Queries
 1. What is CORS ?
 2. 405 status code ?
 3. Difference between app.all vs app.use?
+4. Difference between URL and URI
+5. HEAD Method
+6. Circuit breakers
 
 C. PRODUCTION-GRADE EXPRESS 
 --------------------------

@@ -7,3 +7,19 @@ Routes
 
     - /customers -> list of customers
     - /customers/{customerId} -> single customer
+
+Safe vs Idempotent
+    - GET -> Must be side-effect free
+    - DELETE -> Must be safe to retry
+    - POST -> Must assume retires will happen and Must be protected when money or inventory is involved
+    - PATCH -> Must be explicit about state transition
+
+status codes
+    - 201 for creation
+    - 200 for retrieval and updates
+    - 204 for deletes
+    - 400 / 422 for validation
+    - 401 / 403 for auth
+    - 404 for missing resources
+    - 409 for illegal state transitions
+    - 500 / 503 for server issues

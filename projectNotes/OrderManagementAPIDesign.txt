@@ -23,3 +23,96 @@ status codes
     - 404 for missing resources
     - 409 for illegal state transitions
     - 500 / 503 for server issues
+
+Idempotency
+    -   async function createOrder(req, res) {
+            const key = req.headers["Idempotency-key"];
+
+            if(!key) {
+                return res.status(400).json({ error : "IDEMPOTENCY_KEY_REQUIRED"})
+            }
+
+            const existing = await idempotencyStore.get(key) 
+
+            if(existing) {
+                return res.status(existing.status).json(existing.response)
+            }
+
+            const order = await orderServer.create(req.body)
+            await idempotencyStore.set(key, {
+                status : 201,
+                response : order
+            })
+
+            res.status(201).json(body)
+        }
+
+Error categories
+    - validation errors (400 / 422)
+        - Missing fields
+        - Invalid inputs
+        - Schema violations
+        - Codes
+            - VALIDATION_ERROR
+            - INVALID_ORDER_STATUS
+    - authentication errors (401)
+        - Missing token
+        - Invalid token
+        - Expired token
+        - Codes
+            - UNAUTHENTICATED
+            - TOKEN_EXPIRED
+    - authorization errors (403)
+        - Accessing someone else's order
+        - Role restrictions
+        - Codes
+            - FORBIDDEN
+            - INSUFFICIENT_PERMISSIONS
+    - not found errors (404)
+        - order does not exist
+        - customer not found
+        - Codes
+            - ORDER_NOT_FOUND
+            - CUSTOMER_NOT_FOUND
+    - conflict errors (409)
+        - Cancelling shipped order
+        - Paying already paid order
+        - Codes
+            - ORDER_STATE_CONFLICT
+            - PAYMENT_ALREADY_PROCESSED
+    - system errors (500 / 503)
+        - unhandled exceptions
+        - database unavailable
+        - Codes
+            - INTERNAL_SERVER_ERROR
+            - SERVICE_UNAVAILABLE
+
+- Error classes
+
+                class ApiError extends Error {
+                    constructor({ code, message, status, details }){
+                        super(message);
+                        this.code = code;
+                        this.status = status;
+                        this.details = details;
+                    }
+                }
+
+                class NotFoundError extends ApiError {
+                    constructor(code, message = 'Resource not found'){
+                        super({
+                            code,
+                            message,
+                            status : 404
+                        })
+                    }
+                }
+        - Usage:  
+                - throw new NotFoundError("ORDER_NOT_FOUND", "order not found")
+
+- Pagination
+    - Cursor-based pagination for public API's
+    - Offset-based pagination only for admin/internal use
+    
+
+                

@@ -173,6 +173,7 @@ Queries
 4. Difference between URL and URI
 5. HEAD Method
 6. Circuit breakers
+7. How to apply a lock to redis to avoid race condition
 
 C. PRODUCTION-GRADE EXPRESS 
 --------------------------

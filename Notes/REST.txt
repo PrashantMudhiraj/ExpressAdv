@@ -460,7 +460,7 @@
 
         - 500 vs 503 - Your Fault(server) vs Temporary Failure
             - 500 Internal server error - "Bug"
-                - Use 500 when"
+                - Use 500 when
                     - unhandled exception
                     - Programming error
                     - Inconsistent state
@@ -490,14 +490,402 @@
                         Location /new-url
             - 302 Found (Temporary redirect)
                 - This resource is temporarily available elsewhere
+------------------------------------------------------------------------------------------------
+6. Idempotent Keys
+    - Idempotent key turn a Non-Idempotent operation into a retry-safe operation in application level.
+    - Real production scenario
+        - POST /orders
+            1. Client sends request
+            2. Server create order
+            3. Server responds with 201 Created
+            4. Response is lost(timeout/network issue)
+            5. Client retries
+        - Result
+            - Two orders created
+            - Same intent
+            - Different IDs
+    - A client generated unique identifier that represents one logical operation, regardless of how many times it is sent.
+    - Client Behavior
+        - Before sending a POST request
+            1. Generate a unique key(UUID)
+            2. Sends it in a header
+                - POST /orders
+                - Idempotent-key : <unique key>
+    - Server behavior(high-level)
+        - When the server receives a POST request with an idempotent key:
+            1. Look up the key in a persistent store(redis)
+            2. if does not exist:
+                - Process the request
+                - store the result (status + response body)
+                - Associate with the key
+            3. if key already exist:
+                - Do not re-execute logic
+                - Return the stored response
+    - Where idempotency is Mandatory(Real world)
+        - Payments
+        - Order Creation
+        - Inventory reservation
+        - Email sending
+        - Any side-effect-heavy POST
+    - Rules
+        1. key is required for POST request
+        2. Same key + same user -> same result
+        3. Same key + different payload -> error (important)
+        - why rule #3 is important
+            - Prevent accidental misuse
+            - Forces correctness on the client
+------------------------------------------------------------------------------------------------
+7. API response structure
+    - In Production environment, Consistency it the most important attribute for an API' response structure. Client can able to write single piece of code for "success" and single piece of code for "failure"
+    - Client do not integrate with your code or database, they rely on response from server
 
+    1. Consistent success response
+        - Clients can predict where to find the actual data regardless of the endpoint
+        - Two common patterns
+            1. Bare/Flat Response(No Envelope)
+                {
+                    "id" : 123,
+                    "status" : "created",
+                    "total" : 500
+                }
+                - Pros
+                    - simple
+                    - less nesting
+                    - easy for small APIs
+                - Cons
+                    - no place for metadata
+                    - Hard to add pagination info
+                    - Hard to add requester identifier
+            2. Envelope Response
+                {
+                    "data" : {
+                        "id" : 123,
+                        "status" : "created",
+                        "total" : 500
+                    },
+                    "<meta-info" : {
+                        ....
+                    }
+                }
+                - Pros
+                    - Clear separation of data and metadata
+                    - Easy to extend without breaking clients
+                    - Consistent parsing logic
+                    - Scales well with pagination, link, etc...
+        - Standard success response shape
+            - Canonical success format
+                {
+                    "data" : <RESOURCE | ARRAY>,
+                    "meta" : {....} // optional
+                }
 
+                - data is always present in success response
+                - meta is optional and non breaking
+                - No success : true flag
+            - e.g : 
+                - POST /orders
+                    -> 201 Created
+
+                        {
+                            "data" : {
+                                "id" : 123,
+                                "status" :; "created",
+                                "total" : 500,
+                                "customerId" : 10
+                            } //RESOURCE
+                        }
+
+                - Always read response data
+                - Never inspect endpoint for response (response remain consistent for API's)
+                - GET /orders
+                    -> 200 OK
+                
+                        {
+                            "data" : [
+                                { "id" : 123, "status" : "created" },
+                                { "id" : 124, "status" : "paid" }
+                            ]
+                            "meta: {
+                                "page" : 1,
+                                "limit" : 20,
+                                "total" : 124
+                            }
+                        }
+    2. Consistent error responses
+        - Canonical error response
+            {
+                "error" : {
+                    "code" : "ORDER_NOT_FOUND",
+                    "message" : "Order not found"
+                }
+            }
+        - Rules
+            - error is always present on failure response
+            - code is machine-readable
+            - message is human-readable
+        - e.g : 
+                app.get("/orders/:id" , async(req, res) => {
+                    const order = await orderService.getById(req.params.id);
+
+                    if(!order) {
+                        return res.status(404).json({
+                            "error" : {
+                                "code" : "ORDER_NOT_FOUND",
+                                "message" : "Order not found"
+                            }
+                        })
+                    }
+
+                    res.status(200).json({ "data" : order })
+                })
+------------------------------------------------------------------------------------------------
+8. Error response standardization
+
+    1. Why Error Standardization is mandatory(Not optional)
+        - In productions:
+            - Frontend teams write conditional logic
+            - Mobile apps need localized message
+            - SDKs need machine-readable signals
+            - Retry logic need to know what failed
+            - Observability needs clarification
+        - If errors are inconsistent
+            - Client parse string
+            - Logic breaks on message change
+            - Refactors cause regression
+            - Debugging become guesswork
+        - Standardization means every error must be in same shape and rule, regardless of error where it is coming from.
+        - Canonical Error Response Shape.
+            - For all error expect 204, we use:
+                {
+                    "error" : {
+                        "code: "SOME_ERROR_CODE", // machine-readable
+                        "message": "Human readable explanation of the error", // Human-readable
+                        "details": {} //optional
+                    }
+                }
+    
+    2. Error Codes vs Error Messages
+        - It is for machines
+        - Error codes:
+            - Are stable
+            - Never localized (translation)
+            - Never exposed from internal exceptions
+            - Used by clients for logic
+            - e.g:
+                    "code" : "ORDER_NOT_FOUND"
+                    
+                    - CLIENT LOGIC
+
+                            if(error.code === "ORDER_NOT_FOUND") {
+                                showNotFoundUI();
+                            }
+        - Error Messages
+            - Can change wording
+            - Can be localized (translation)
+            - Are shown to the users or developers
+            - e.g: 
+                    "message" : "order not found"
+            - Never write client logic based on messages
+        - Base API error code
+
+                // Existing interface
+                interface Error {
+                    name: string;
+                    message: string;
+                    stack?: string;
+                }
             
+                class ApiError extends Error {
+                    constructor({ code, message, status, details }){
+                        super(message);
+                        this.code = code;
+                        this.status = status;
+                        this.details = details;
+                    }
+                }
+            
+            - Example Not Found Error
 
+                class NotFoundError extends ApiError {
+                    constructor(code, message = 'Resource not found'){
+                        super({
+                            code,
+                            message,
+                            status : 404
+                        })
+                    }
+                }
+
+            - Usage:  
+                - throw new NotFoundError("ORDER_NOT_FOUND", "order not found")
+    
+    3. Field-Level validation Errors
+        - The error response should be clearly describe which field is failed validation and why, in a machine readable structure
+        - The Problem they solve
+            - POST /orders
+                {
+                    "quantity" : -1,
+                    "price" : "abc",
+                    "customerId" : null
+                }
+            - If API returns
+                {
+                    "error" : {
+                        "code" : "VALIDATION_ERROR",
+                        "message" : "Invalid request"
+                    }
+                }
+                - In this client has no idea
+                    - Which field is wrong
+                    - What exactly is wrong
+                    - How to show inline errors in UI
+            - Correct error response
+                {
+                    "error" : {
+                        "code" : "VALIDATION_ERROR"
+                        "message": "Request validation failed",
+                        "details" : {
+                            "fields" : {
+                                "quantity" : "Must be greater than 0",
+                                "price" : "Must be a number",
+                                "customerId" : "Required"
+                            }
+                        }
+                    }
+                }
+
+                - client logic can be simple
+                    -   if(err.code === "VALIDATION_ERROR") {
+                            showInlineErrors(error.details.fields);
+                        }
+
+    4. Avoid leaking internals
+        - Leaking internals happens when your API exposes:
+            - Stack error
+            - SQL errors
+            - File paths
+            - Library-specific messages
+            - Environmental details
+        - example of bad response:
+            {
+                "error: {
+                    "message": "cannot read property 'id' of undefined",
+                    "stack": "TypeError at orderService.js:42"
+                }
+            }
+            - This tells an attacker:  
+                - Language (Node.js)
+                - File structure
+                - Code paths
+                - Possible attack vectors
+        - Client should know what went wrong, but never how it was implemented
+        - Correct handling of internal errors
+            - throw new Error("Database connection refused");
+            - The Client should receive:
+                {
+                    "error: {
+                        "code": "INTERNAL_SERVER_ERROR",
+                        "message": "Something went wrong"
+                    }
+                }
+            - Meanwhile, internally, you log the real error:
+                - logger.error(err);
 ------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------
+9. Pagination strategies
+
+    - In production, you must never allow an endpoint to return an unbounded number of resources. If a table has a million rows and a user hit GET /products, you express tries to serialize a large JSON array, Which may leads to exhausting Node.js heap memory
+    - Pagination is the mechanism of returning data in discrete "chunks"
+    - It is a data-access and performance control mechanism
+    - If pagination is designed poorly:
+        - Data slow down
+        - Response become inconsistent
+        - Clients see duplicates or missing data
+        - Large datasets become unusable
+    - In real systems
+        - Orders can be in millions
+        - Returning "all data" is impossible
+        - Memory, CPU, network becomes bottlenecks
+    - So, Pagination solves this problem, but should be handled carefully
+
+    - Two Real Pagination strategies
+        - There are only two serious approaches in productions systems:
+        1. Offset-based pagination
+            - Client specific:
+                - How many records to skip
+                - How many records to take
+                - GET /orders?page=3&limit=20 -> OFFSET 40 LIMIT 20 -> offset = (page - 1) * limit = (3 - 1) * 20 = 40
+                - GET /orders?offset=40&limit=20 -> OFFSET 40 LIMIT 20
+                - Typical API response
+
+                    {
+                        "data" : [/* 20 orders */],
+                        "meta" : {
+                            "page" : 3,
+                            "limit" : 20,
+                            "total" : 142
+                        }
+                    }
+
+                - Performance issue
+                    - Scan and discard OFFSET rows
+                    - Cost increases with page number
+                    - Large offsets = slow query
+                - Offset-based pagination is okay when:
+                    - Dataset is small
+                    - Data changes rarely
+                    - UI requires page numbers
+                    - Performance is not critical
+        2. Cursor-based pagination
+            - Instead of page numbers, the client uses a cursor.
+                - A pointer to the last seen record
+                - Usually based on a stable, indexed column
+                - GET /orders?limit=20&cursor=2026-01-16T10:15:05Z
+                    - "Give me the next 20 records after this cursor"
+
+                   {
+                        "data" : [/* 20 orders */],
+                        "meta" : {
+                            "nextCursor" : 2026-01-16T11:15:05Z,
+                            "limit" : 20,
+                        }
+                    }
+
+                - No page numbers, Just give me the next chuck.
+            - Why cursor pagination is superior
+                - Cursor pagination:    
+                    - Is stable under concurrent inserts
+                    - Avoids OFFSET scan
+                    - Scales to millions rows
+                    - Matches streaming behavior
+            - Choosing a Cursor
+                - A cursor must be:
+                    - stable
+                    - indexed
+                    - Monotonic (always increasing or decreasing)
+                - Good Cursor fields:
+                    - createAt
+                    - Auto-increment id
+                    - Composite (createAt, id)
+                - Bad Cursor fields:
+                    - Random UUID
+                    - Mutable fields
+                    - Non-indexed column
+
+            - Cursor Pagination example
+                - Request
+                    - GET /order?limit=20&cursor=1701418200000
+                - Server logic
+                    - SELECT * FROM orders WHERE created_at > cursor ORDER BY created_at ASC LIMIT 20;
+                - Response
+                    {
+                        "data" : [/* 20 orders */],
+                        "meta" : {
+                            "nextCursor" : 1701418600000,
+                            "limit" : 20,
+                        }
+                    }
+
+
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------

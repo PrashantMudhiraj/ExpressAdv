@@ -1,6 +1,15 @@
 import express from "express";
-
+import { ValidationError } from "../middleware/errors.js";
 const ordersRouter = express.Router();
+
+ordersRouter.get("/throwError", (req, res) => {
+    // throw new ValidationError({
+    //     quantity: "Must be greater than 0",
+    //     price: "Must be a number",
+    //     customerId: "Required",
+    // });
+    throw new Error("internal error");
+});
 
 ordersRouter.get("/:id", (req, res, next) => {
     console.log("orderRouter req.url " + req.url); // /1

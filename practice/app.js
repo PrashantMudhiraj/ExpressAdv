@@ -1,6 +1,7 @@
 import express from "express";
 import { logger } from "./middleware/logger.js";
 import apiRouter from "./routes/apiRouter.js";
+import errorHandler from "./middleware/errorHandler.js";
 
 // import usersRouter from "./routes/users.router.js";
 // import ordersRouter from "./routes/orders.router.js";
@@ -23,6 +24,7 @@ app.use("/test", (req, res, next) => {
     res.end();
 });
 
+app.use(errorHandler);
 // console.log(app.router.handle);
 // app.use((req, res) => res.send("none route"));
 // console.log(app.router);

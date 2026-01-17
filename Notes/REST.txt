@@ -1225,6 +1225,83 @@
         | ASC  | createdBefore | `> cursor`       | ✅                                      |
         | ASC  | createdAfter  | `> cursor`       | ⚠️ (must ensure cursor > createdAfter)  |
 ------------------------------------------------------------------------------------------------
+13. Validation Fundamentals
+    
+    - Validation is the act of proving that incoming request is acceptable before your system trusts it.
+        - Checking if data looks fine
+        - Making typescript happy
+        - Preventing crashes
+    - In HTTP request, every single external input is untrusted
+    - That includes :
+
+        1. Request body (req.body)
+            {
+                quantity : -5,
+                prices : free,
+                customerId : null,
+            }
+            - Question you must answer:
+                - Is Quantity a positive number?
+                - Is price is a number?
+                - Is customerId present and valid?
+
+        2. Query parameters (req.query)
+            - GET /orders?limit=1000000&sort=DROP_TABLE
+            - Questions
+                - Is limit with allowed bounds?
+                - Is sort one of the allowed list?
+                - Is direction valid(asc/desc)?
+
+        3. Route params (req.params)
+            - GET /orders/abc123
+            - Questions
+                - Is this a valid UUID?
+                - Is this format expected by DB?
+                - Could this cause a DB error or injection?
+
+        4. Headers (often forgotten)
+            - Idempotency-key : <empty>
+            - Authorization : Bearer <token>
+            - Headers can
+                - Break auth
+                - Break caching
+                - Break idempotency guarantees
+
+    1. Why validation must be middleware
+        - Express execution model
+            - Request -> Middleware chain -> Controller -> Service -> Response
+        - Middleware runs before Controller
+        - why middleware?
+            1. Single responsibility
+            2. Controller must assume valid input
+            3. Centralized failure behavior
+
+                router.post(
+                    "/orders",
+                    validateCreateOrder, //validation middleware
+                    createOrderController //business logic
+                )
+
+    2. Fail-Fast principle
+        - Fail as early as possible, with the least cost and with clear intent.
+        - It prevents
+            - wasted resources
+            - data corruption
+            - security issues
+
+    3. Validation is also a security boundary
+        - validation protects against:
+            - Mass assignment attacks
+            - Unexpected fields
+            - Type confusion bugs
+            - Injection vectors(indirectly)
+                - Example :
+                    {
+                        quantity : 2,
+                        price : 100,
+                        status: "SHIPPED" //client should not set this
+                        isAdmin : true // malicious attempt
+                    }
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------

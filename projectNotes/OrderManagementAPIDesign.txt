@@ -113,6 +113,21 @@ Error categories
 - Pagination
     - Cursor-based pagination for public API's
     - Offset-based pagination only for admin/internal use
-    
+
+- Filters
+    - status
+    - customerId
+    - createdAfter
+    - createdBefore
+
+- Sort filter
+    - createdAt
+    - total amount
+    - status
+    - direction 
+        - asc 
+        - desc
+    - default
+        - createdAt desc
 
                 

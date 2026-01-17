@@ -300,6 +300,7 @@
                         }
 ------------------------------------------------------------------------------------------------
 4. Safe vs Idempotent HTTP Methods
+
     - In distributed systems, requests WILL be retried.
     - In distributed systems, network failures are inevitable. A client might send a request, the server might process it successfully, but the network might drop the response before it reaches the client. This is where the concepts of Safety and Idempotency become critical for building resilient backends.
     - safe and Idempotent semantics are exist so retries don't corrupt data.
@@ -358,6 +359,7 @@
             - PATCH -> Must be explicit about state transition
 ------------------------------------------------------------------------------------------------
 5. Proper HTTP status codes
+
     - Status codes are not decorations. There are primary signals to the distributed systems
     - The HTTP status code is the primary metadata the server provides to the client. It allows client to decide the next move
     - In Production, many actors consume your API;
@@ -492,6 +494,7 @@
                 - This resource is temporarily available elsewhere
 ------------------------------------------------------------------------------------------------
 6. Idempotent Keys
+
     - Idempotent key turn a Non-Idempotent operation into a retry-safe operation in application level.
     - Real production scenario
         - POST /orders
@@ -536,6 +539,7 @@
             - Forces correctness on the client
 ------------------------------------------------------------------------------------------------
 7. API response structure
+
     - In Production environment, Consistency it the most important attribute for an API' response structure. Client can able to write single piece of code for "success" and single piece of code for "failure"
     - Client do not integrate with your code or database, they rely on response from server
 
@@ -761,11 +765,11 @@
 
     4. Avoid leaking internals
         - Leaking internals happens when your API exposes:
-            - Stack error
+            - Stack error*
             - SQL errors
-            - File paths
+            - File paths*
             - Library-specific messages
-            - Environmental details
+            - Environmental details*
         - example of bad response:
             {
                 "error: {
@@ -850,7 +854,7 @@
                         }
                     }
 
-                - No page numbers, Just give me the next chuck.
+                - No page numbers, Just give me the next chunk.
             - Why cursor pagination is superior
                 - Cursor pagination:    
                     - Is stable under concurrent inserts
@@ -884,11 +888,342 @@
                             "limit" : 20,
                         }
                     }
+------------------------------------------------------------------------------------------------
+10. Filtering Strategies
+
+    - Filtering is not about convenience, It is about controlled data access
+    - Reducing a collection of resources based on conditions provided by the clients
+    - GET /orders?status=paid
+        - We still operate on /orders
+        - We only return a subset
+        - The resource identity does NOT change
+
+    - Why Filtering is dangerous if done naively
+        - Order.find(req.param)
+            - Client can query any column
+            - Internal fields got exposed
+            - attacker can alter the schema
+            - Query performance becomes unpredictable
+
+    1. Filtering Must be Explicit
+        - The Server decides what can be filtered
+        - The Client only selects value
+        - This leads to two strategies
+            1. Allowlist (recommended)
+                - You explicitly define which fields are filterable and how they can be filtered
+                - Example allowed filters for an order:
+                    - status
+                    - customerId
+                    - createdAfter
+                    - createdBefore
+                - GET /orders?status=paid&customerId=10
+                - Logic
+
+                         function buildOrderFilters(query) {
+                            const filters = {};
+
+                            if(query.status) {
+                                filters.status = query.status
+                            }
+
+                            if(query.customerId) {
+                                filters.customerId = query.customerId
+                            }
+
+                            return filters;
+                         }
+
+            2. Denylist (almost always wrong)
+                - Allow everything expect these few forbidden fields.
+                - Example :
+                    - delete query.password;
+                    - delete query.internalNotes;
+                - This fails because:
+                    - New fields added later exposed by default
+                    - Developers forget to updated denylist
+                    - security bugs are introduced silently
+
+    2. Range-Based Filters
+        - Order naturally requires ranges:
+            - Date ranges
+            - Amount ranges
+        - Example
+            - GET /orders?createdAfter=2025-12-127createdBefore=2026-02-01
+            - Logic
+
+                    function buildOrderFilters(query) {
+                        const filters = {};
+
+                        if(query.status) {
+                            filters.status = query.status
+                        }
+
+                        if(query.customerId) {
+                            filters.customerId = query.customerId
+                        }
+
+                        if(query.createdAfter || query.createdBefore) {
+                            filters.createdAt = {};
+
+                            if(query.createdAfter) {
+                                filters.createdAt.$gt = new Date(query.createdAfter)
+                            }
+                        
+                            if(query.createdBefore) {
+                                filters.createdAt.$lt = new Date(query.createdBefore)
+                            }
+                        }
+                         
+                      return filters;
+                    }
+
+    3. Combining Filters (AND Semantics)
+        - By default
+            - Multiple filters are combined with AND
+                - GET /orders?status=paid&customerId=10
+                - Meaning
+                    - Orders that are paid
+                    - AND belong to customer 10
+            - OR logic 
+                - Must be explicit
+                - Usually avoided in REST APIs
+
+    4. Validations is Mandatory(Not Optional)
+        - Filtering inputs must be validated
+            - Types
+            - Allowed values
+            - Ranges
+                - Examples
+                    - status=unknown
+                    - customerId=abc
+                    - invalid date format
+            - these should return
+                - 422 Unprocessable Entity
+            
+    5. How Filtering fits into the request lifecycle
+        - Correct lifecycle
+            - Query validation
+            - Filter construction
+            - Database query
+            - Pagination
+            - Response
+------------------------------------------------------------------------------------------------
+11. Sorting Strategies
+
+    - Sorting in not cosmetic, It defined determinism, pagination correctness and performance
+    - It means in what deterministic order should resources be returned?
+        - GET /orders?sort=createdAt&direction=desc
+    - Sorting is data correctness concern, not just a UI feature
+
+    1. API Design for sorting(Query parameter)
+        - GET /orders?sort=createdAt&direction=desc
+        - where
+            - sort - filed name
+            - direction - asc or dsc
+        - Allowlist is mandatory for sorting
+            - if not client can sort by any field 
+            - internal field exposed
+            - Unindex sorts kills performance
+            - Schema leaks to client
+    2. Correctness Allowlist-Based Sorting
+        - Define allowed sort fields
+
+            -   const ALLOWED_SORT_FIELDS = {
+                    createdAt : 'createdAt', -> API to DB field mapping
+                    totalAmount : 'totalAmount',
+                    status : 'status'
+                }   
+            - validate sort direction
+                - Allowed values:
+                    - asc
+                    - desc
+                - Anything else -> error
+                - Logic
+
+                        function buildOrderSort(query) {
+                            const sort = {};
+                            const field = query.sort || 'createdAt';
+                            const direction = query.direction || 'desc';
+
+                            if(!ALLOWED_SORT_FIELDS[field]) {
+                                throw new ValidationError({
+                                    sort : "Invalid sort field"
+                                })
+                            }
+
+                            if(!['asc' , 'desc' ].includes(direction)) {
+                                throw new ValidationError({
+                                    direction : "Must be asc or desc"
+                                })
+                            }
+
+                            sort[]ALLOWED_SORT_FIELDS[field] = direction === 'asc' ? 1 or -1; //default DESC 
+
+                            return sort;
+                        }
+        3. Sorting + Pagination (Critical Pagination)
+            - Offset Pagination
+                - Sorting must be stable
+                - Same sort must be applied next page
+            - Cursor Pagination
+                - cursor field must match sort field
+                - cursor must move in the same direction
+                - Example
+                    - GET  /orders?limit=20&cursor=17638040000
+                    - WHERE createdAt < cursor ORDER BY createAt desc
+        4. Multi-Field Sorting (advanced)
+            - sort=createdAt,status
+        5. Performance
+            - Sorting is only fast if
+                - Field is indexed
+                - Direction matched index
+                - Database size is manageable
+            - Allowlisting let us:
+                - Ensure indexes exist
+                - Prevent additional slow queries
+        6. How Sorting fits into the request lifecycle
+            - Request
+                - Query validation
+                - Filter construction  -> Where status = 'paid'
+                - Sort construction -> order by createdAt desc
+                - Pagination -> limit 20
+                - Database query
+                - Response
+            - Sorting must apply 
+                - After filtering
+                - before pagination
+------------------------------------------------------------------------------------------------
+12. Filtering -> Sorting -> Pagination
+    - Filter -> where
+    - Sort -> order by
+    - pagination -> limit
+
+    - GET /orders
+            ?status=paid
+            &customerId=12
+            &createdAfter=2026-01-01
+            &sort=createdAt
+            &direction=desc
+            &limit=20
+            &cursor=17010182000
+
+    1. Filtering
+        - Query param used for Filtering
+        - status = paid & customerId = 12 & createdAfter = 2026-01-01
+        - Give me the orders that paid belongs to the customer 12 were created after 2026-01-01
+        {
+            status : "paid",
+            customerId : 12
+            createdAt : {
+                $gt : new Date('2026-01-01T00:00:00Z')
+            }
+        }
+
+    2. Sorting
+        - Query param used for sorting
+        - status=createdAt & direction=desc
+        - Sort order by creation time, newest first"
+        {
+            createdAt : -1;
+        }
+        
+    3. Pagination
+        - Query param used for Pagination
+        - limit = 20
+        - cursor = 17010182000
+        - “Give me 20 orders created before timestamp 1704105600000”
+        {
+            createdAt : { $lt : new Date(cursor)}
+        }
+
+    - Incoming Request
+            │
+            ├─▶ Query validation
+            │    ├─ validate status enum
+            │    ├─ validate customerId number
+            │    ├─ validate date formats
+            │    ├─ validate sort field & direction
+            │    └─ validate limit & cursor
+            │
+            ├─▶ Build filters
+            │
+            ├─▶ Build sort
+            │
+            ├─▶ Apply cursor pagination
+            │
+            ├─▶ Database query
+            │
+            └─▶ Response
+
+    - Final SQL query
+        - SELECT *
+            FROM orders
+            WHERE
+            status = 'paid'
+            AND customer_id = 42
+            AND created_at > '2024-01-01'
+            AND created_at < cursor
+            ORDER BY created_at DESC
+            LIMIT 20;
+
+    - Response Shape
+        {
+            "data": [
+                {
+                "id": 891,
+                "status": "paid",
+                "customerId": 42,
+                "totalAmount": 1200,
+                "createdAt": "2024-02-10T10:12:45Z"
+                }
+            ],
+            "meta": {
+                "limit": 20,
+                "nextCursor": "2024-02-10T10:12:45Z"
+            }
+        }
+
+        - /api/orders?status=paid&customerId=123&createdAfter=2026-01-01T00:00:00Z&limit=5&sort=createdAt&direction=desc&cursor=2026-01-01T02:01:00Z
+                {
+                finalQuery: {
+                    status: 'paid',
+                    customerId: '123',
+                    createdAt: {
+                    '$gt': 2026-01-01T00:00:00.000Z,
+                    '$lt': 2026-01-01T02:01:00.000Z
+                    }
+                },
+                sort: { createdAt: -1 },
+                limit: 5
+                }
+            - createdAt < cursor -> sortOrder is desc
+            - createdAfter = 2026-01-01T00:00:00Z
+            - cursor = 2026-01-01T02:01:00Z
+
+        - /api/orders?status=paid&customerId=123&createdBefore=2026-01-01T02:00:00Z&limit=5&sort=createdAt&direction=asc&cursor=2026-01-01T01:01:00Z
+                {
+                finalQuery: {
+                    status: 'paid',
+                    customerId: '123',
+                    createdAt: {
+                    '$lt': 2026-01-01T02:00:00.000Z,
+                    '$gt': 2026-01-01T01:01:00.000Z
+                    }
+                },
+                sort: { createdAt: 1 },
+                limit: 5
+                }
+            - createdAt > cursor -> sortOrder is asc
+            - createdBefore = 2026-01-01T02:00:00Z
+            - cursor = 2026-01-01T01:01:00Z
 
 
-------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------
+        | Sort | Static filter | Cursor condition | Valid                                   |
+        | ---- | ------------- | ---------------- | --------------------------------------- |
+        | DESC | createdAfter  | `< cursor`       | ✅                                      |
+        | DESC | createdBefore | `< cursor`       | ⚠️ (must ensure cursor < createdBefore) |
+        | ASC  | createdBefore | `> cursor`       | ✅                                      |
+        | ASC  | createdAfter  | `> cursor`       | ⚠️ (must ensure cursor > createdAfter)  |
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------

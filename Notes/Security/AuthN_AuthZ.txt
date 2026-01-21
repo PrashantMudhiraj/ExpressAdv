@@ -1,0 +1,94 @@
+Phase 0 - Cryptography Foundations
+
+    0.1 - Terminologies
+        - Plain Text: Data in its original, readable form.
+            - Example: password123
+        - Ciphertext: Unreadable, transformed version of plain text after cryptographic operation.
+            - Example: 983089703n83ebx2z211097as349kw122
+        - Key: A Secret value used to transform data
+            - This is the actual power in cryptography, *No Security without a key*.
+        - Encryption: Converting plaintext -> ciphertext using a key, so it can be reversed later
+            - Important property : 
+                - Reversible
+            - Used when data must be read again later
+        - Decryption: Converting ciphertext -> plaintext using a key
+            - Only someone with the correct key can decrypt
+        - Hash: A one-way transformation of data
+            - Key properties:   
+                - Cannot be reversed
+                - Same input -> Same output
+        - Salt: Random data added to input before hashing
+            - Why it exists:
+                - Prevents precomputed attacks(rainbow tables)
+            - Salt is not secret -> it is stored with the hash
+        - Signature: Cryptography proof that:
+            - Data was created by a trusted party
+            - Data was not modified
+            - Signature = integrity + authenticity, not secrecy
+
+            - data + private key -> signature
+            - data + public key -> verification
+        
+        - Cryptography solve three  fundamental problems
+            - Keep data secret -> Solved by encryption
+            - Store secret safely -> Solved by Hashing
+            - Prove trust -> Solved by Signatures
+            
+        - WHy these are used?
+            - Why encryption?
+                - Protect data in transit(HTTPS)
+                - Protect data at rest(DB, backups)
+            - Why hashing?
+                - Password storage
+                - verifying integrity
+            - Why signatures?
+                - JWT trusts
+                - OAuth tokens
+                - API authentication
+
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+x. OAuth 2.0 
+	1.1 Terminology
+	    - Resource Owner(me): Entity that can grant access to a protected resource. Typically this is end user.
+	    - Client(any app that contact access): Application requesting access to a protected resource on behalf of the Resource Owner
+	    - Resource Server(google.contacts.api): Server hosting the protected resources. This is the API you want to access
+	    - Authorization Server(accounts.google.com): Server that authenticates the Resource Owner and issues Access Tokens after getting proper authentication. In this case AuthO.
+	    - Authorization grant: That proves User approved/granted access for protected resource
+	    - Redirect URI : callback url, Once AuthZ done, It will redirect to redirect_uri
+	    - Access token: It is a secure, temporary digital key or credential that allows an application to access specific resources (like an API or data) on behalf of a user, without needing their password repeatedly
+	    - User Agent: Agent used by the resource owner to interact with the client(example, a browser or a native application)
+		- Scope: It defines the specific actions application can be allowed to do on user's behalf
+		- Back channel (highly secure channel): Backend server
+		- Front channel (less secure channel): Frontend App
+
+	1.2 Flows 
+		- Authorization code(front channel + back channel)
+		- Implicit(front channel only)
+
+		- Resource owner password credentials(back channel only)
+		- Client credentials(back channel only)
+
+2. Problems with OAuth 2.o for authentication
+	- No standard way to get the user's information
+	- Every implementation is a little different
+	- No common set of scopes
+
+3. OAuth 2.0 and OpenID connect
+	- OpenID Connect is for authentication
+	- OAuth 2.0 is for authorization
+--------------------------------------------------------------------------------------------
+
+

@@ -130,3 +130,20 @@ Error categories
     - default
         - createdAt desc
         
+
+- Safe caching rules for our Order API
+    
+    - Our default rules
+
+        Endpoint type                       cache rule
+        -------------------                 ------------------
+        Authenticated reads                 private, no-cache
+        public metadata                     public, max-age=60
+        Mutations(POST/PUT/DELETE)          no-store
+
+    -   res.set("Cache-Control", "private, no-cache");
+        res.set("ETag", ordersEtag);
+        res.json({ data: orders });
+
+    - ETag : orders:{userId}:{latestUpdatedAt}:{sort}:{filterHash}
+

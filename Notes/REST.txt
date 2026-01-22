@@ -1596,8 +1596,291 @@
             - Check permissions
             - Decide business rules
             - Access application data unnecessarily
+------------------------------------------------------------------------------------------------
+17. Caching strategies (HTTP Layer)
+    
+    - Caching is the controlled use of previous generated data to avoid recomputation and reduce latency, load, and cost.
 
+    1. In HTTP systems, caching means:
+        - The Sever tells intermediaries(middleman)(Browser, CDN, proxy) 
+        - When a response can be reused
+        - For whom, it may be reused
+        - Under what condition it must be revalidated
+        - Caching is not an optimization trick
+        - It is part of HTTP Contract
+
+    2. Why Caching is required ?
+        - Without caching, every request:
+            - Hits your Node.js server
+            - Hits your database
+            - Consumes CPU, memory, and network
+            - Scaled linearly with traffic
+        - In real production systems
+            - 80-90% of traffic is read traffic
+            - Most reads requests identical data
+            - Recomputing identical responses is wasteful
+
+    3. Critical Rule - Caching is About Correctness First
+        - It is not about speed, This mindset causes bugs.
+            - Correct caching means:
+                - Never serving another user's private data.
+                - Never serve stale data when freshness matters
+                - Never bypassing authorization rules
+        - At fast wrong response is worse than a slow correct response
+        
+    4. Sub topics
+
+        1. HTTP caching vs application caching
+            1.a HTTP Caching
+                - Happens outside your code
+                - Implemented by browsers, CDN, proxies
+                - Controlled via headers
+                - stateless and scalable
+                - Examples:
+                    - Browser cache
+                    - CDN(cloudflare, Fastly)
+                    - Reverse proxy
+            1.b Application caching
+                - Happens inside your system
+                - Redis, memory, etc..
+                - requires invalidation strategies
+                - Harder to get right
+            - HTTP caching should always come first
+            - If HTTP caching goes wrong, internal caching only amplifies mistakes.
+
+        2. Cache-Control Header (Core of HTTP caching)
+            2.a Cache-Control is an instruction set sent by the server that tells caches:
+                - Whether they may store the response
+                - For how long
+                - Under what conditions
+                - Examples:
+                    - Cache-Control: max-age=60 
+                    - This means the response may be reused for 60 seconds without contacting the server.
+            2.b Common directive
+                - no-store
+                    - Do not store any response anywhere
+                    - used for sensitive data
+                - no-cache
+                    - Cache may store response
+                    - Must revalidate before reuse
+                - max-age=seconds
+                    - Response is fresh for given time
+                - private
+                    - Only browser may cache
+                    - Shared caches must not
+                - public
+                    - Any cache may store
+
+        3. Public vs private responses (security critical)
+            3.a Public response
+                - Same for all users
+                - Safe to share
+                    - Example: Product catalog
+                - Cache-Control: public, max-age=300
+            3.b Private response
+                - User-specific
+                - Must never be shared
+                    - Example : users orders
+                - Cache-Control: private, no-cache
+
+        4. ETag and Conditional requests
+            4.a. What is an ETag?
+                - An ETag is a version identifier for the resource
+                    - Example: "order-list-v42"
+                - The client later sends:
+                    - If-None-Match: "order-list-v42"
+            4.b Server behavior
+                - If resource unchanged -> 304 Not Modified
+                - If Changed -> 200 Ok with new body
+
+                This:
+                    - Saves bandwidth
+                    - Preserves correctness
+                    - Avoid stale responses
+                    - Why ETag is better than blind caching
+                        - Time-based caching guesses freshness
+                        - ETag verifies freshness
+                    - That matters when:
+                        - Orders changes frequently
+                        - Multiple clients update data
+                        - Accuracy is critical
+
+        5. Authentication and Caching interaction
+            - Authenticated responses are private by default
+            - For endpoints like
+                - GET /orders
+                - GET /orders:id
+            - Correct headers:
+                - Cache-Control: private, no-cache
+            - Why:
+                - Response depends on req.user
+                - Shares must not be used
+                - Browser may cache, but must revalidate
+
+            res.set("Cache-Control", "private, no-cache");
+            res.set("ETag", ordersEtag);
+            res.json({ data: orders });
+
+            - Private? → “Is this user-specific?”
+            - No-cache? → “Must I ask the server before reuse?”
+            - ETag? → “Has it changed?”
+
+        6. What Problem Do ETag and If-None-Match solve ?
+            - ETag and If-None-Match together solves the problem of safely reusing data without guessing whether it is stale
+            - More Precisely:
+                - They allow a client to ask the server:
+                    - "Has this resource changed since the last time i saw it?"
+                - If the answer is no, the server sending the response body again
+                - If the answer is yes, the server sends the updated representation.
+            - This is called conditional requests, and it it a core part of HTTP correctness.
+            - ETag does not exist by default
+            - It is introduced after the first successful response
+            - Cache-Control decides IF reuse is allowed.
+            - ETag decides WHETHER reuse is still valid.
+
+            - Revalidation means the cache is not allowed to use its stored response without first asking the origin server whether that response is still valid.
+
+            - Shared cache is a cache that serves multiple users, not just one.
+                - CDN
+                - Reverse proxy(nginx, varnish)
+                - Corporate proxy
+                - ISP cache
 ------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------
+18. Rate Limiting
+    
+    - It is a mechanism that restrict how many requests that a client allowed to make within a defined time window.
+    - Rate Limiting protects system capacity
+
+    - Without Rate Limiting
+        - A frontend bug causes:
+            - A retry loop
+            - 50 requests per second per user
+            - Thousands of users affected
+        - Result:
+            - Database connection pool exhausts
+            - Latency spikes
+            - Healthy users are impacted
+            - System appears "down"
+
+    - Rate Limiting also protects against:
+        - Brute force attacks
+        - Credentials stuffing
+        - Token guessing
+        - Enumerations attacks
+
+    - sub topics
+
+        1. What problem rate limiting actually solves
+
+            1.a Rate Limiting protects:
+                - CPU
+                - Memory
+                - Database connections
+                - Downstream services
+            1.b It does not   
+                - Make code faster
+                - Fix inefficient queries
+                - Replace caching
+                - Replace authentication
+
+        2. IP-Based vs User-Based Rate Limiting
+
+            2.a IP-Based Rate Limiting
+                - IP Based rate limiting limits request for IP address.
+                - Examples:
+                    - Allow 100 request per minute per IP.
+                - Why it is exist
+                    - Works before authentication
+                    - Protects public endpoints
+                    - Cheap and simple
+            
+            2.b User-Based Rate Limiting
+                - User-Based rate limiting limits request for authenticated identity.
+                - Example rule:
+                    - Allow 1,000 requests per minute per user.
+                - Why this is more accurate
+                    - Tied to real identity
+                    - Fair usage per customer
+                    - Works even behind shared IPs
+        
+        3. Rate Limiting Algorithms
+
+            3.a Fixed window
+                - Count requests in a fixed time bucket
+                - Reset counter every window
+                - Example:
+                    - 100 requests per minute
+                    - Counter resets every minute
+                - Problem
+                    - Traffic bursts at window edges:
+                        - at 59th sec -> 100 requests
+                        - at 61th sec -> 100 requests
+                        - 200 requests in 2 seconds
+
+            2.b Sliding window
+                - Requests spread over rolling time window
+                - No sharp reset boundary
+                - This:
+                    - Smooths traffic
+                    - Prevents bursts
+                    - Better reflects real usage
+                - Most modern systems use sliding windows or token buckets
+
+        4. Correct HTTP behavior when Rate Limit is Exceeded
+
+            - Status code (non-negotiable)
+            - 429 Too Many Requests 
+                - This tells the client that "you are sending requests too fast"
+            - Important response headers : Retry-After: 60
+                - Client should wait 60 seconds before retrying
+
+        5. Express Rate Limiting Middleware
+
+            - What rate limiting middleware must do
+                - Identify the client(IP or User)
+                - Track request counts
+                - Decide allow/deny
+                - Fail fast
+                - Never reach controllers on violation
+
+            function rateLimit({keyGenerator, limit, windowMs}) {
+                return (req, res, next) => {
+                    const key = keyGenerator(req);
+
+                    const isAllowed = checkAndIncrement(key, limit, windowMs);
+
+
+                    if(!isAllowed){
+                        res.set("Retry-After", Math.ceil(windowMs/1000));
+                        
+                        return next(
+                            new ApiError({
+                                statusCode: 429,
+                                code: "RATE_LIMIT_EXCEEDED",
+                                message: "Too many request, please try again later"
+                            })
+                        )
+                    }
+
+                    next();
+                }
+            }
+
+            - This middleware:
+                - Is reusable
+                - Is deterministic
+                - Integrates with centralized error handling
+
+        6. Middleware order
+
+            - Request
+                -> IP rate limit
+                -> Authentication
+                -> User rate limit
+                -> Authorization
+                -> Validation
+                -> Controller
+
+
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------

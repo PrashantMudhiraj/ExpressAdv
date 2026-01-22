@@ -12,13 +12,13 @@ import crypto from "crypto";
  *  - Prevents identical plaintext from production identical ciphertext
  *  - IV is not secret, but must be unique
  *
- * crypto.createCipheriv('aes-256-csc', key, iv);
+ * crypto.createCipheriv('aes-256-cbc', key, iv);
  *  - Creates an AES cipher
  *  - aws-256-cbc
  *      - AES algorithm
  *      - 256-bits
- *      - CBC mode
- *          - CBC is used here for demo; GCm is preferred in real systems
+ *      - CBC mode -> Cipher Blocking chain
+ *          - CBC is used here for demo; GCM is preferred in real systems
  * crypto.update(text,'utf-8','hex') + cipher.final('hex');
  *  - update() -> encrypt data
  *  - utf-8 -> input encoding
@@ -50,3 +50,12 @@ function decrypt(encrypted) {
 
 const secret = encrypt("hello");
 console.log(decrypt(secret));
+
+/**
+ * Block Cipher : An Encryption algorithm that works on fixed-size blocks of data. Can encrypt only one block at a time.
+ * Block Cipher Mode : A method that tells the cipher how to encrypt data longer than one block. (CBC one of them)
+ * CBC (Cipher Block Chaining) : A block cipher mode of operation
+ *  - CBC chains blocks together so that:
+ *      - Each block depends on the previous block
+ * IV (Initialization vector) : A random value used only for first block of operation
+ */

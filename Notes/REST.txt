@@ -1763,7 +1763,8 @@
             - System appears "down"
 
     - Rate Limiting also protects against:
-        - Brute force attacks
+        - Dos/DDos Protection: It prevents a single malicious actor from overwhelming the Node.js event loop or the database with a flood of requests
+        - Brute force attacks: It limits the number of attempts an attacker can make on sensitive endpoints like /login or /reset-password
         - Credentials stuffing
         - Token guessing
         - Enumerations attacks
@@ -1786,7 +1787,7 @@
         2. IP-Based vs User-Based Rate Limiting
 
             2.a IP-Based Rate Limiting
-                - IP Based rate limiting limits request for IP address.
+                - IP Based rate limiting limits request for IP address. (client's IP address req.ip)
                 - Examples:
                     - Allow 100 request per minute per IP.
                 - Why it is exist
@@ -1795,7 +1796,7 @@
                     - Cheap and simple
             
             2.b User-Based Rate Limiting
-                - User-Based rate limiting limits request for authenticated identity.
+                - User-Based rate limiting limits request for authenticated identity. (user_id)
                 - Example rule:
                     - Allow 1,000 requests per minute per user.
                 - Why this is more accurate
@@ -1833,6 +1834,10 @@
                 - This tells the client that "you are sending requests too fast"
             - Important response headers : Retry-After: 60
                 - Client should wait 60 seconds before retrying
+            - X-RateLimit-Limit: The maximum number of requests allowed in the window
+            - X-RateLimit-Remaining: How many requests the client has left
+            - X-RateLimit-Reset: The time(in UTC seconds) when the window resets
+            - Retry-After: (sent with 429) the number of seconds to wait before retrying
 
         5. Express Rate Limiting Middleware
 
@@ -1880,7 +1885,52 @@
                 -> Authorization
                 -> Validation
                 -> Controller
-
-
 ------------------------------------------------------------------------------------------------
+19. API Versioning
+
+    - API versioning is about protecting existing clients while allowing the backend to evolve safely
+    - It is a practice of exposing multiple, explicitly identified contracts of the same API so that change can be introduced without breaking existing clients
+    
+    1. Core principle - Backward Compatibility First
+        - A versioned API assumes clients will not upgrade immediately
+        - This means:
+            - Old Clients continue working
+            - New Clients can opt into new behavior
+            - Server supports multiple contracts temporarily
+        - This is non-negotiable in real systems
+
+    2. API versioning strategies
+
+        2.a URL versioning
+            - GET /api/v1/orders
+            - GET /api/v2/orders
+        2.b Header versioning
+            - GET /orders
+            - Accept-Version: v2
+        2.c Media-type versioning
 ------------------------------------------------------------------------------------------------
+20. Backward compatibility & deprecation
+
+    1. Backward compatibility means the existing clients continue to work correctly without modification when the server is updated
+        - In Simple terms
+            - If client works yesterday, It must working today until unless explicitly warned and migrated
+        - It is about:
+            - Respecting client contract
+            - Avoiding silent breakage
+            - Preserving trust
+
+    2. Deprecation
+        - Deprecation is a formal, communicated process of making an API behavior as obsolete, while still keep running it functional for a defined period.
+
+        - HTTP Header
+            - Deprecation : true
+            - Sunset: Wed, 30 sep 2026 00:00:00 GMT
+
+            router.get("/orders", (req, res) => {
+                res.set("Deprecation", "true");
+                res.set("Sunset", "Wed, 30 Sep 2026 00:00:00 GMT");
+
+                res.json({
+                    data: orders,
+                });
+            });

@@ -1934,3 +1934,444 @@
                     data: orders,
                 });
             });
+------------------------------------------------------------------------------------------------
+21. Security best practices
+    
+    1. Helmet
+        - Helmet is an Express middleware collection that configure multiple HTTP response headers to reduce the browser's attack surface by default. From first principle, it works at HTTP protocol boundary, instructing user agents how they are allowed to interpret, execute and embed responses.
+        - Helmet is a browser-facing firewall implemented through HTTP headers
+
+        1. Subtopics
+            1.a X-Content-Type-Options 
+                - This header disables MIME-type sniffing. Without it, browser may reinterpret JSON or text responses as executable content(HTML), enabling XSS even when the server returns "correct" data
+                - MIME-type sniffing the process of intercept and inspecting the data packet or It is a technique is used to identify the Content-Type of the HTTP Response using first few bytes of the actual content.
+                    
+                    - X-Content-Type-Options: "nosniff"
+
+                - Ref : https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Content-Type-Options
+
+            1.b X-Frame-Options
+                - This Response header can be used to indicates whether to a page is allowed to render in <frame>, <iframe>, <embed> or <object>
+                - This header prevents your API Response from being embedded in iframes. Without it, attacker can perform clickjacking attacks, tricking users to perform unauthenticated actions invisibly
+
+                    - X-Frame-Options: DENY
+                    - X-Frame-Options: SAMEORIGIN
+
+                - Ref : https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options
+
+            1.c Referrer-Policy
+                - It is a Response header controls how much referrer information can be included with the requests
+                - Control how much referrer information is sent to other origin
+                - Incorrect defaults can leak internal URLs, query parameter or identifiers
+
+                - Directives
+                    - Referrer-Policy: no-referrer
+                    - Referrer-Policy: no-referrer-when-downgrade 
+                    - Referrer-Policy: origin
+                    - Referrer-Policy: origin-when-cross-origin
+                    - Referrer-Policy: same-origin
+                    - Referrer-Policy: strict-origin
+                    - Referrer-Policy: strict-origin-when-cross-origin
+                    - Referrer-Policy: unsafe-url
+
+                - Ref : https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy
+                    
+            1.d Content-Security-Policy
+                - CSP restricts which scripts, images, styles and connections are allowed. Even for APIs, CSP matters because browser-based clients may execute or embed responses.
+                - The Primary purpose of the CSP is to control which resource, in particular javascript resources, a document is allowed to load.
+                - This can be used as a defense against Cross-site-scripting(XSS) attacks, in which attacker is able to inject malicious code into victim site.
+                - A CSP can have other purpose as well, including defending against clickjacking and helping to ensure that a site's pages will be loaded over HTTPs.
+
+                - Content-Security-Policy: default-src 'self'; img-src 'self' example.com
+                    - the default-src directive is set to 'self'
+                    - the img-src directive is set to 'self' example.com
+    
+    2. Input Sanitization
+
+        - It is crucial process of cleaning, filtering and validation user-provided data to remove or neutralize or normalize malicious code(like scripting and SQL command) and harmful characters before the system processes it.
+        - Preventing security vulnerabilities such as SQL injection and XSS
+        - From First principle, every external input is hostile by default.
+
+        - Sample Code:
+
+            function sanitizeObject(input) {
+                // 1. Return early if not a 'truthy' object (handles null, strings, numbers, etc.)
+                if (typeof input !== "object" || input === null) {
+                    return input;
+                }
+
+                // 2. Handle Arrays specifically to maintain their structure
+                if (Array.isArray(input)) {
+                    return input.map((item) => sanitizeObject(item));
+                }
+
+                // 3. Handle Objects
+                for (const key of Object.keys(input)) {
+                    if (key.startsWith("$") || key.includes(".")) {
+                        delete input[key];
+                    } else {
+                        // Recursively sanitize the value
+                        input[key] = sanitizeObject(input[key]);
+                    }
+                }
+
+                return input;
+            }
+            
+            export function sanitizationMiddleware(req, res, next){
+                req.body = sanitizeObject(req.body);
+                req.query = sanitizeObject(req.query);
+
+                next();
+            }
+
+    3. Preventing Mass assignment
+
+        - Mass assignment is a Vulnerability where user-provided input is directly/blindly mapped into internal domain object, allowing clients to set the fields they should never control. From first principles, this occurs when an API confuses transport-layer data with domain authorize.
+        - Clients are allowed to provide the data, not to perform actions.
+
+        - Example mistake:
+            const order = Order.create(req.body); 
+                - req.body may contains
+                    {
+                        username: "....",
+                        password : "....",
+                        orderDetails : {
+                            .....
+                        }
+                        isAdmin : true,
+                    }
+
+        - Correct code:
+
+                function pick(obj, allowedFields) {
+                    const result = {};
+                    for(const field of allowedFields){
+                        if(obj[field] !== undefined){
+                            result[field] = obj[field]
+                        }
+                    }
+                    return result
+                }
+
+                export function createOrderController(req, res) {
+                    const input = pick(req.body,["productId" , "quantity"]);
+
+                    const order = orderService.createOrder({
+                        ...input,
+                        userId =  req.auth.userId;
+                    })
+
+                    res.status(201).json({data : order})
+                }
+
+    4. CORS (Cross-Origin resource sharing)
+
+        - CORS is a browser-enforced security mechanism that controls whether a web page running on one origin is allowed to make HTTP request to another origin.
+        - An origin is defined as:
+            - Schema(http/https)
+            - host
+            - port
+        - https://app.example.com and https://api.example.com are different origins, even if they share a domain. Browsers enforces CORS strictly at this granularity
+        - CORS also relies on a mechanism by which browsers make a "preflight" request to the server hosting the cross-origin resource, in order to check that the server will permit the actual request. 
+
+            import cors from "cors";
+
+            const corsOptions = {
+                origin : function(origin, callback) {
+                    const allowList = ["https://app.exaple.com"]
+
+                    if(!origin || allowList.includes(origin)) {
+                        callback(null,true)
+                    } else {
+                        callback(new Error("Not allowed by cors"))
+                    }
+                },
+
+                credentials : true
+            }
+
+            app.use(cors(corsOptions))
+
+        - CORS ia a browser rule, not an API firewall.
+------------------------------------------------------------------------------------------------
+22. API Documentation (OpenAPI)
+
+    - API Documentation, in a production backend system, is a formal contract that describes what clients are allowed to send, what they will received and under which conditions behavior changes. From first principles, a contract is a shared promise across independently deployed systems.
+
+    1. Sub topics:
+        1. What API documentation really is (contract vs reference)
+            1.a Documentation as a Contract
+                - A Contract answer exactly
+                    - What endpoints exist
+                    - Which HTTP methods are allowed
+                    - Required vs optional fields
+                    - Validation rules
+                    - Error shapes and status code
+
+            1.b Reference Documentation vs Contract Documentation
+                - Reference Doc explains usage with examples
+                - Contract Doc define guarantees and constraints
+                - OpenAPI is designed for Contract Documentation. Treating it like a tutorial results in ambiguous behavior and broken clients
+
+            1.c Open API Specification
+                - It is a Standard, language agnostic format for describing RESTful APIs, allowing humans and machines to understand an APIs capabilities without seeing its source code, enabling tools to generate documentation, client code and tests.
+
+                - Examples
+                    
+                    openapi : 3.0.0
+                    info:
+                        title: Order Management API
+                        version: 1.0.0
+                    paths:
+                        /api/v1/orders:
+                            get:
+                                summary: List Orders
+                                responses:
+                                    "200":
+                                        description: Successful response
+
+        2. Why OpenAPI Is Required in Production Systems.
+            - OpenAPI is a standardized, machine-readable specification that formally defines an API’s surface area, behavior, and constraints. From first principles, production systems require determinism across independent actors—clients, servers, CI pipelines, and tooling. OpenAPI provides a single, authoritative description that eliminates interpretation ambiguity by converting API behavior into a verifiable contract.
+
+        3. OpenAPI as a source of truth
+            - Treating OpenAPI as a source of truth means the OpenAPI specification is the authoritative definition of API behavior. While code i merely one implementation of that definition. 
+------------------------------------------------------------------------------------------------
+23. Bulk operations and limits
+
+    1. Bulk Operations
+        - Bulk operations are API endpoints that accept or modify multiple resources in a single request. From first principles, a bulk endpoint is not an optimization convenience; it is a batch boundary that trades request overhead for increased payload size, higher execution cost, and more complex failure semantics. Bulk APIs fundamentally change how load, errors, and consistency behave in a system.
+
+    2. Payload size limit
+        - Payload size limits are hard caps on the maximum size of an HTTP request body that an API is willing to accepts.
+        From first principle, every byte sent by a client must be read into memory, parsed, validated, and possible logged by the server. Unlimited payloads convert network bandwidth into memory pressure and CPU exhaustion, turning single request into a denial-of-service vector
+
+        - Specify size limit in OpenAPI
+        - Express
+            app.use({
+                express.json({
+                    limit: "100kb",
+                })
+            })
+        - When payload exceeds limit:
+            - Express throws a "PayloadTooLargeError"
+            - you must map this to a 413 Payload Too Large response
+
+            - Example
+                if(err.type === "entity.too.large") {
+                    return res.status(413).json({
+                        error : {
+                            code : "PAYLOAD_TOO_LARGE",
+                            message: "Request payload exceeds the allowed size"
+                        }
+                    })
+                }
+
+        3. Abuse prevention
+            - To prevent API abuse, a comprehensive, multi-layered security strategy is necessary, focusing on robust authentication and authorization, rate limiting and throttling, and input validation. 
+            - Requires
+                - Authentication and Authorization
+                - Rate Limiting and Throttling
+                - Request validation & input sanitization
+                - Encryption and secure communication
+------------------------------------------------------------------------------------------------
+24. Graceful shutdown
+
+    - A graceful shutdown is the controlled termination of running server process such that no in-flight work is lost, no new work is accepted, and shared resource are released predictably. From first principle, Operation systems do not "ask" application to stop, they signal them. SIGTERM and SIGINT are Unix process signals that notify a process it should begin shutdown logic instead if existing abruptly
+
+    - SIGTERM (Signal Termination)
+    - SIGINT (Signal Interrupt)
+
+        function handleShutdown(signal) {
+            console.log('Received ${signal}. Starting graceful shutdown...');
+            //shutdown logic will go her
+        }
+
+        process.on("SIGTERM", handleShutdown)
+        process.on("SIGINT", handleShutdown)
+
+    - "Closing server connection" during graceful shutdown means stopping the acceptance of new network, while allowing existing, in-flight requests to complete normally. From first principle, An HTTP server is a long-lived TCP listener. If that listener remains open during shutdown, new work continues to arrive, making it impossible to ever reach a "safe to exit" state.
+
+        - Stopping a server
+            - In Node.js, calling server.close()
+                - Stops accepting new connections
+                - Does not terminate existing ones
+                - Allow in-flight requests to finish
+        - Express alone is not enough
+            - Express is request handler, not a server. The actual TCP listener is created by Http.createServer() or app.listen(). if you do not keep a reference to that server instance, you cannot control connection acceptance, making graceful shutdown impossible
+
+        - Creating a server 
+                import http from "http";
+                import app from "./app.js";
+
+                const server = http.createServer(app);
+
+                server.listen(3000 , () => {
+                    console.log("Server listing on port 3000")
+                })
+
+        - Stopping a server
+
+                function shutdown() {
+                    console.log("Stopping server from accepting new connections....")
+                    server.close(() => {
+                        console.log("All Connection closed");
+                        process.exit(0);
+                    })
+                }
+
+        - "Preventing dropped requests" means ensuring that every request accepted by the server, should either complete successfully or fail with client visible error, even during shutdown. From first principle, Once a server acknowledges a request by accepting a TCP connection, it assumes responsibility for delivering response. Dropped requests violate this responsibility and force clients into ambiguous retry behavior
+
+            - Rejecting new requests during shutdown
+                - HTTP 503 service unavailable
+                - Optional Retry-After header
+            - Some requests may never finish due to bugs or slow dependencies
+                - A maximum wait time
+                - A forced termination fallback
+
+            - Express implementation
+
+                    let isShuttingDown = false;
+
+                    function shutdown() {
+                        isShuttingDown = true;
+
+                        server.close(() => {
+                            console.log("HTTP server closed")
+                            process.exit(0)  //clean shutdown
+                        })
+
+                        setTimeout(() => {
+                            console.error("Forcing shutdown due to timeout");
+                            process.exit(1) //forced shutdown
+                        },30000)
+                    }
+
+
+                    app.use((req, res, next) => {
+                        if(isShuttingDown) {
+                            res.set("Connection", "close");
+                            return res.status(503).json({
+                                error: {
+                                    code: "SERVER_SHUTTING_DOWN",
+                                    message: "Server is restarting. Please retry shortly."
+                                }
+                            })
+                        }
+                        next();
+                    })
+
+        - process.exit(0)
+            - Exit code 0 means:
+                - The process terminated successfully
+                - Shutdown was expected and clean
+                - No error condition occurred
+        - process.exit(1)
+            - Exit code 1 means:
+                - The process terminated due to an error condition
+                - shutdown was abnormal or forced
+                - something when wrong
+        - uncaughtException
+            - An uncaughtException is a JavaScript error thrown synchronously that propagates all the way to the event loop without being  caught
+            - Example:
+                - throw new Error("Something broke");
+                - process.on("uncaughtException", handler);
+        - unhandledRejection
+            - An unhandled promise rejection occurs when:
+                - A Promise rejects
+                - No .catch() exists
+                - No await error handling exists
+                - Example:
+                    - Promise.reject(new Error("DB failed"));
+                    - await dbCall();
+                    - process.on("unhandledRejection", handler);
+
+        - error handler
+
+                    function handleFatalError(error, origin) {
+                        console.error("Fatal error:",{
+                            origin,
+                            message: error.message,
+                            stack: error.stack
+                        })
+
+                        shutdown();
+                    }
+
+                    process.on("uncaughtException" ,(error) => {
+                        handleFatalError(error, "uncaughtException");
+                    })
+
+                    process.on("unhandledRejection" ,(error) => {
+                        handleFatalError(error, "unhandledRejection");
+                    })
+
+                    //shutdown.js
+
+                    setTimeout(() => {
+                        process.exit(1) //forced failure exit
+                    },30000)
+------------------------------------------------------------------------------------------------
+25. Logging & Observability
+
+    - Request logging is the systematic recording of metadata about every incoming HTTP request and its corresponding response.
+    - Logging Middleware Placement
+
+        - Request logging must:
+            - Run after request is received
+            - Run after response is sent
+            - Wrap the entire lifecycle
+
+        - sample logging
+
+                app.use((req, res, next) => {
+                    const start = process.hrtime.bigint();
+
+                    res.on("finish", () => {
+                        const end = process.hrtime.bigint();
+                        const durationMs = Number(end - start) / 1_00_000;
+
+                        console.log(
+                            JSON.stringify({
+                                method: req.method,
+                                path: req.originalUrl,
+                                status: res.statusCode,
+                                durationMs
+                            })
+                        )
+                    })
+
+                    next();
+                })
+
+        - Correlation Id
+            - X-Request-Id
+            - X-Correlation-Id
+            - or from request
+
+            - if not present in request
+
+                        import { randomUUID } from "crypto";
+
+                        app.use((req, res, next) => {
+                            const incomingId = req.header("X-Request-Id");
+                            const requestId = incomingId || randomUUID();
+
+                            req.requestId = requestId;
+
+                            res.setHeader("X-Request-Id", requestId);
+
+                            next();
+                        })
+
+                        console.log(
+                            JSON.stringify({
+                                requestId: req.requestId,
+                                method: req.method,
+                                path: req.originalUrl,
+                                status: res.statusCode,
+                                durationMs
+                            })
+                        )
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------

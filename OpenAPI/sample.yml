@@ -1,0 +1,85 @@
+requestBody:
+    required: true
+    content:
+        application/json:
+            schema:
+                type: object
+                additionalProperties: false
+                required:
+                    - productId
+                    - quantity
+                properties:
+                    productId:
+                        type: string
+                        description: Identifier of the product being ordered
+                    quantity:
+                        type: number
+                        minimum: 1
+                        maximum: 50
+                        description: Number of units
+
+parameters:
+    - in: query
+      name: limit
+      schema:
+          type: number
+          minimum: 1
+          maximum: 50
+      description: Maximum number of orders to return
+    - in: query
+      name: cursor
+      schema:
+          type: string
+      description: Pagination cursor
+    - in: query
+      name: status
+      schema:
+          type: string
+          enum: [PENDING, CONFIRMED, CANCELLED]
+      description: Filter orders by status
+
+components:
+    schemas:
+        ErrorResponse:
+            type: object
+            required: [object]
+            properties:
+                error:
+                    type: object
+                    required: [code, message]
+                    properties:
+                        code:
+                            type: string
+                        message:
+                            type: string
+                        details:
+                            type: string
+
+responses:
+    "400":
+        description: Validation Error
+        content:
+            application/json:
+            schema:
+                $ref: "#/components/schema/ErrorResponse"
+
+    "401":
+        description: Unauthenticated
+        content:
+            application/json:
+            schema:
+                $ref: "#/components/schema/ErrorResponse"
+
+    "403":
+        description: Forbidden
+        content:
+            application/json:
+            schema:
+                $ref: "#/components/schema/ErrorResponse"
+
+    "409":
+        description: Invalid state transition
+        content:
+            application/json:
+            schema:
+                $ref: "#/components/schema/ErrorResponse"

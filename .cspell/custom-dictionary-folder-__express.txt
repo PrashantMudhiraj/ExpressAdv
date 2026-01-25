@@ -1,0 +1,8 @@
+# Custom Dictionary Words
+ABAC
+chacha
+Cipheriv
+Ciphertext
+Decipheriv
+HMAC
+IDOR

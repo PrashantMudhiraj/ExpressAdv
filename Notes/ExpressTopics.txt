@@ -160,7 +160,19 @@ B. REST API DESIGN & BEST PRACTICES
     - Input sanitization 
     - Preventing mass assignment 
     - CORS basics 
-38. Bulk operations & limits 
+38. API Documentation(Open API)
+    - What API documentation really is (contract vs reference)
+    - Why OpenAPI is required in production systems
+    - OpenAPI as a source of truth (not code comments)
+    - Design-first vs code-first documentation
+    - Documenting:
+        - request bodies
+        - query params
+        - validation constraints
+        - error contracts
+    - Keeping docs in sync (failure modes)
+    - Express + OpenAPI integration strategy
+39. Bulk operations & limits 
     - Bulk create/update endpoints 
     - Payload size limits 
     - Abuse prevention 
@@ -177,12 +189,15 @@ Queries
 
 C. PRODUCTION-GRADE EXPRESS 
 --------------------------
-39. Graceful shutdown 
+40. Graceful shutdown 
     - SIGTERM / SIGINT 
     - Closing server connections 
     - Preventing dropped requests
-40. Logging & observability 
+41. Logging & observability 
     - Request logging 
     - Correlation IDs 
     - Debugging async flows 
+
+
+
 

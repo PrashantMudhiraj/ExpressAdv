@@ -1,37 +1,65 @@
 Phase 0 - Cryptography Foundations
 
-    0.1 - Terminologies
+    0.1 Terminologies
+
         - Plain Text: Data in its original, readable form.
             - Example: password123
+
         - Ciphertext: Unreadable, transformed version of plain text after cryptographic operation.
             - Example: 983089703n83ebx2z211097as349kw122
+
         - Key: A Secret value used to transform data
             - This is the actual power in cryptography, *No Security without a key*.
+
         - Encryption: Converting plaintext -> ciphertext using a key, so it can be reversed later
             - Important property : 
                 - Reversible
             - Used when data must be read again later
+
         - Decryption: Converting ciphertext -> plaintext using a key
             - Only someone with the correct key can decrypt
+
         - Hash: A one-way transformation of data
             - Key properties:   
                 - Cannot be reversed
                 - Same input -> Same output
+                - Small change -> Complete different output
+            - Hashing is not encryption
+
         - Salt: Random data added to input before hashing
             - Why it exists:
                 - Prevents precomputed attacks(rainbow tables)
             - Salt is not secret -> it is stored with the hash
-        - Signature: Cryptography proof that:
-            - Data was created by a trusted party
-            - Data was not modified
+
+        - Signature: 
+            - Cryptography proof that:
+                - Data was created by a trusted party
+                - Data was not modified
+            - A signature proves who sent it and that it hasn't been changed, but it does not hide the information from others.
             - Signature = integrity + authenticity, not secrecy
-        
-        - Cryptography solve three  fundamental problems
+            - Integrity
+                - It hasn't been tampered with.
+                - It ensure that the data you received is exactly what was sent.
+                    - How it works:
+                        - When a sender signs a document, a mathematical "fingerprint" (called as hash) is created based on the content.
+                    - Th Result:
+                        - If even a single comma or digit is changed in the document after it's signed, the "fingerprint" will no longer match. The recipient will immediately know the data was altered.
+            - Authenticity
+                - It proves the identity of the person or system that created the signature
+                    - How it works:
+                        - It uses Asymmetric Cryptography. The sender used their Private Key(which only they have) to create the signature
+                    - The Result:
+                        - Because the recipient uses the sender's public key to verify it. they can be 100% certain that it was created by the owner of that specific key. This also provides Non-repudiation, meaning the sender cannot later claim they didn't sign it.
+            - Not Secrecy
+                - This is the most common point of confusion. A digital signature is not encryption.
+                - If you sign a digital letter but don't encrypt it. the letter is sent in "plain text". This means anyone who intercepts the letter can read every word you wrote.
+
+        - Cryptography solve three fundamental problems
             - Keep data secret -> Solved by encryption
             - Store secret safely -> Solved by Hashing
             - Prove trust -> Solved by Signatures
             
-        - WHy these are used?
+        - Why these are used?
             - Why encryption?
                 - Protect data in transit(HTTPS)
                 - Protect data at rest(DB, backups)
@@ -162,8 +190,232 @@ Phase 0 - Cryptography Foundations
                 - Cloud storage
                 - JWT(when encrypted, JWE)
 
+    0.2 Symmetric Cryptography
+
+        - A Cryptography method where the same key is used for:
+            - Encryption
+            - Decryption
+
+        - Symmetric Key / Shared secret
+            - A Shared secret key known to both sender and receiver
+            - Whoever has this key can:
+                - Encrypt data
+                - Decrypt data
+            - Both parties must already trust reach other
+
+        - Blocker Cipher
+            - An algorithm that encrypts data in fixed-size blocks
+            - Example: AES (16-byte block)
+
+        - Stream Cipher
+            - An algorithm that encrypts data byte-by-byte or bit-by-bit
+            - Example: ChaCha20
+
+        - Simple flow
+            - Plaintext -> Encrypt(key) -> Ciphertext
+            - Ciphertext -> Decrypt(key) -> Plaintext
+        
+        - It is used because fast, efficient and low CPU cost
+        - That's why it is used for:
+            - HTTPS data encryption(after handshake)
+            - Database encryption
+            - File encryption
+            - session data
+            - Cookies
+
+       - Big Problem
+            - How to two parties securely share the same secret key? 
+            - If key is stolen:
+                - All encrypted data is compromised
+                - Attackers can decrypt everything
+
+        - Code : refer ./code/symmetricCryptography.js
+
+        - Authentication Tag (AuthTag)
+            - A short cryptographic value produced during encryption that proves:
+                - That data was not modified
+                - The correct key was used
+            - Authenticate Encryption  
+                - Encryption that provides:
+                    - confidentiality (secrecy)
+                    - Integrity (tamper detection)
+                    - Authenticity (correct key)
+            - In Node.js, getAuthTag() and setAuthTag() are methods used specifically with AEAD (Authenticated Encryption with Associated Data) ciphers, such aes-256-gcm or chacha20-ploy305
+            - With auth tag:
+                - Any modification = decryption fails
+                - Wrong key = decryption fails
+                - Wrong IV = decryption fails
+            - This is why GCM is preferred today 
+                - GCM stands for Galois/Counter Mode. It is a "mode of operation" for symmetric key block ciphers(most commonly AES)
+                - In simple terms, GCM is a "two-in-one" technology. It provides Encryption(secrecy) and Authentication(Integrity) at the same time.
+            - AES-GCM produces two outputs
+                1. Ciphertext -> encrypted data
+                2. Auth Tag -> integrity proof
+
+                - Key + IV + plaintext -> ciphertext + tag
+                - The auth tag is calculated using 
+                    - Encrypted data
+                    - Key
+                    - IV 
+                    - Optional associated data
+                - During decryption
+                    - Recalculate authTag -> compare with provided authTag
+                    - If they match -> decrypt
+                    - If not -> throw error
+
+    0.3 Asymmetric Cryptography
+
+        - This topic explain Public/Private key, which is foundational for:
+            - JWT (RS256/ES256)
+            - OAuth 2.0
+            - OIDC
+            - TLS (HTTPS)
+        
+        - Asymmetric Cryptography system that use two different keys:
+            - One key to encrypt or sign
+            - Another key to decrypt or verify
+
+        - Key Pair
+            - A mathematically linked pair of keys
+                - Public key
+                - Private key
+            - They are generated together and cannot exist independently
+
+                - Public key
+                    - Can be shared openly
+                    - Used to:
+                        - Encrypt data for the owner
+                        - Verify signatures from the owner
+
+                - Private Key
+                    - Must be kept secret
+                    - Used to:
+                        - Decrypt data
+                        - Create digital signature
+
+        - Key Distribution
+            - The process of sharing key securely
+            - Asymmetric cryptography solves the Key-sharing problem of symmetric crypto.
+
+            - Public key -> encrypt
+            - Private key -> decrypt
+
+            - for signature
+            - Public key -> verify
+            - Private key -> sign
+
+        - Mathematical property
+            - Public & Private keys are mathematically related
+            - But:
+                - Public key cannot derive private key
+                - Even with unlimited public access
+            - This relies on:
+                - Large prime factorization(RSA)
+                - Elliptic curve math(ECC)
+
+        - Code : refer ./code/asymmetricCryptography.js
+
+        - Questions
+            - Why JWT Has RS256
+                - JWT: JSON Web Token
+                - RS256: RSA + SHA-256 (asymmetric signing)
+                - Issuer: Entity that creates a token
+                - Verifier: Entity that validates the token
+
+                - RS256 Solution (Asymmetric Signing)
+                    - Private key -> Sign jwt
+                    - Public key -> Verify jwt
+                - How this works
+                    - Auth server signs JWT with private key
+                    - APIs verify using public key
+                    - APIs cannot forge tokens
+
+            - Why OAuth Trusts Tokens
+                - OAuth tokens are not encrypted passwords
+                - They are signed claims
+                - "Digital Signature"
+
+                - OAuth Token Flow (Simplified)
+                    - Authorization server
+                        |_ signs token with private key
+
+                    - Resource server
+                        |_ verifies token with public key
+
+            - Why HTTPS is Possible
+                - The HTTPS Problem
+                    - How can i securely talk to a server i've never met before?
+                - TLS Handshake
+                    - Server sends public key(certificate)
+                    - Client verifies certificates authority(CA)
+                    - Client generates random symmetric key
+                    - Client encrypts it with server's public key
+                    - Server decrypts with private key
+                - Now both share a symmetric session key.
 
 
+        - JWT vs OAuth
+
+            - JWT 
+                - A token format - a way to represent claims securely
+
+            - OAuth 2.0
+                - An Authorization framework - a protocol that defines:
+                    - Roles
+                    - Flows
+                    - How tokens are issued and used
+
+            - Access Token
+                - A token that represents permission, not identity.
+
+            - Authorization server
+                - The system that issues tokens
+
+            - Resource server
+                - The API that validates token and servers data.
+
+            - JWT answers:
+                - How is a token structured and secured?
+                - JWT is just a container:
+                    - Header
+                    - Payload
+                    - Signature
+
+                - JWT says nothing about
+                    - How user logged in
+                    - who issued the token
+                    - why the token exists
+
+            - OAuth answers:
+                - Who is allowed to access what, and how do we issue token safely?
+                - OAuth defines:
+                    - How tokens are requested?
+                    - Who issues them
+                    - Who can use them
+                    - For how long
+            
+
+                
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------------------

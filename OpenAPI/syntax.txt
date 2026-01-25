@@ -1,0 +1,33 @@
+1. OpenAPI YAML is not configuration, It is a formal contract
+    a. Layer 1 API Envelop
+        openapi:
+        info:
+        servers:
+        security:
+        tags:
+    b. Layer 2 - path & operations
+        paths:
+            /resource:
+                get:
+                post:
+    c. Layer 3 - Request inputs
+        parameters:
+        requestBody:
+    d. Layer 4 - Schemas
+        components:
+            schemas:
+                type:
+                properties:
+                required:
+                enum:
+                minimum:
+                maximum:
+                additionalProperties:
+    e. Layer 5 - Errors & Responses
+        responses
+        components/schemas/ErrorResponse
+
+- reference
+    - https://spec.openapis.org/oas/v3.1.0#openapi-specification
+    - https://docs.stripe.com/api/expanding_objects
+    - 

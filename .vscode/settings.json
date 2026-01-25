@@ -1,0 +1,11 @@
+{
+    "cSpell.words": ["clickjacking"],
+    "cSpell.customDictionaries": {
+        "custom-dictionary-folder-__express": {
+            "name": "custom-dictionary-folder-__express",
+            "path": "${workspaceFolder:__express}/.cspell/custom-dictionary-folder-__express.txt",
+            "addWords": true,
+            "scope": "folder"
+        }
+    }
+}

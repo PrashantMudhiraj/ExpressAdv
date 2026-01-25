@@ -392,10 +392,156 @@ Phase 0 - Cryptography Foundations
                     - How tokens are requested?
                     - Who issues them
                     - Who can use them
-                    - For how long
-            
+                    - For how long           
 
-                
+    0.4 Digital Signatures
+
+        - Digital signatures are the bridge between Cryptography and real-world trust(JWT, OAuth, HTTPS).
+        - It is a Cryptographic mechanism that proves:
+            - who created the data
+            - That the data is not modified
+        - Signing
+            - The process of using a private key to create a signature over data.
+        - Verification
+            - The process of using public key to validate:
+                - The Signature
+                - The integrity of that data
+        - Integrity
+            - Guarantee the data was not altered, even by 1 bit
+        - Authenticity
+            - Guarantee that data was created by the expected owner of the private key
+        - Non-repudiation
+            - The signer cannot deny having signed that data later
+
+        - High-level 
+            - Signing flow
+                - Data -> Hash -> Sign(hash(data), privatekey) -> Signature
+                    - Signature = Encrypt(Hash(data), PrivateKey)
+                    - Data is hashed first
+                    - Hash is signed(not raw data)
+                    - Signature is small and fixed size
+
+            - Verification flow
+                - Data -> Hash (Integrity)
+                - Signature + PublicKey -> Verify (Authenticity)
+                    - Data has matches
+                    - Signature matches
+                    - Correct public key is used
+                - Verification flow
+                    1. Re-hash the received data -> hash1
+                    2. Use public key to decrypt signature -> hash2
+                    3. Compare hash1 and hash2 -> hash1 === hash2
+            - If you need secrecy -> Encryption
+            - If you need trust -> use signatures
+        
+        - Digital signature never operate on raw data, they operate on hashes.
+
+                Issuer:
+                    data
+                    ↓
+                    hash(data)
+                    ↓
+                    sign(hash, privateKey)
+                    ↓
+                    signature
+
+                Verifier:
+                    data
+                    ↓
+                    hash(data) ──────────────┐
+                                             │- compare
+                    signature + publicKey ───┘
+
+        - Example
+                SENDER (Alice)                          RECIPIENT (Bob)
+                [Document]                              [Document] + [Signature]
+                    |                                       |             |
+                    v                                       |             v
+                (Hash Function)                             |      (Alice's Public Key)
+                    |                                       |             |
+                    v                                       v             v
+                [Hash A]                             (Hash Function)  [Hash B]
+                    |                                       |             |
+                (Alice's Private Key)                       v             v
+                    |                                    [Hash C] <---> [Hash B]
+                    v                                           Compare!
+                [Signature] ---------------------------------------^
+
+        - You generate a hash from the received document.
+        - You use the public key to "open" the signature to see what the original hash was.
+        - You compare the two hashes.
+        - "The verifier does not generate a hash from the signature. Instead, the verifier extracts the original hash from the signature and compares it to a fresh hash they generate from the data".
+
+    0.5 Hashing & Password Security
+
+        1. TERMINOLOGIES
+            - Password Hashing
+                - The process of converting a password into a one-way cryptographic value for storage
+            - One-way Function
+                - Is easy to compute
+                - Is computationally infeasible to reverse
+            - Salt
+                - Random unique data added to a password before hashing
+            - Pepper
+                - A secret value added to all passwords in addition to salt, stored outside the database
+            - Rainbow table
+                - A precomputed list of common passwords and their hashes.
+            - Brute-Force Attack
+                - Systematically trying many passwords until one matches
+
+        2. What is password hashing
+            - We never store passwords. We store proofs that a password was correct. 
+            - You cannot "decrypt" a password hash
+
+            - User enters password
+                - hash(password + salt)
+                - compare with stored hash
+
+        3. Why password hashing is used?
+            - Why not encryption ?
+                - Encryption can be reversed
+                - If key leaks - all passwords leak
+            - Why hashing is correct
+                - one-way
+                - Database breach != password disclosure
+                - Limits blast radius
+            - If system can "decrypt" passwords, it is already insecure
+
+        4. Why normal hashes are not enough
+            - Algorithms like:
+                - SHA-256
+                - SHA-512
+                - MD5
+            - are:
+                - Too fast
+                - Designed for data integrity, not passwords
+            - Fast hashing = easy brute force.
+
+        5. What password hashing algorithms do differently
+            - Password safe algorithms:
+                - Are slow
+                - Are adaptive
+                - Are memory-hard(some)
+            - Example:
+                - bcrypt
+                - argon2
+                - scrypt
+
+        6. How salt protect you
+            - hash(password + uniqueSalt)
+            - Same password -> different hash per user 
+            - Rainbow tables become useless
+            - Salt:
+                - Is random
+                - Is stored with the hash
+                - Is Not secret
+            - Pepper
+                - hash(password + salt + pepper)
+                - pepper is a server secret
+                - stored in environment variables
+                - Protects against DB-only breaches
+        7. passwords are verified, not recovered
+        8. Code: ref - ./code/passwordHashing.js
 --------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------------------
